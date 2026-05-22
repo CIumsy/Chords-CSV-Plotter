@@ -59,7 +59,7 @@ canvas{display:block}
   padding:.5rem 1rem; border-bottom:1px solid var(--border);
   background:var(--surf); flex-shrink:0; min-height:48px;
 }
-.logo{display:flex;align-items:center;gap:.5rem;font-size:15px;font-weight:700;letter-spacing:-.02em;white-space:nowrap}
+.logo{display:flex;align-items:center;gap:.5rem;font-size:15px;font-weight:700;letter-spacing:-.02em;white-space:nowrap;flex-shrink:0}
 .logo svg{width:22px;height:22px;color:var(--primary)}
 .topbar-actions{display:flex;gap:.5rem;align-items:center;margin-left:auto}
 .upload-btn{
@@ -164,7 +164,7 @@ canvas{display:block}
 }
 .info-pill strong{font-family:var(--mono);font-size:11px}
 .main-area{display:flex;flex:1;min-height:0;overflow:hidden}
-.plot-col{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.plot-col{flex:1;min-width:120px;display:flex;flex-direction:column;overflow:hidden}
 .canvas-wrap{
   flex:1;min-height:0;position:relative;overflow:hidden;
   background:var(--surf);
@@ -277,20 +277,43 @@ canvas{display:block}
 ::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 
 /* ─── RESPONSIVE ─────────────────────────────────── */
-@media(max-width:900px){
+@media(max-width:1100px){
   .sidebar{width:220px}
-  .fft-col.open{width:35%}
+}
+@media(max-width:900px){
+  .sidebar{width:190px;min-width:150px}
+  .fft-col.open{width:32%;min-width:160px}
 }
 @media(max-width:680px){
   body{overflow:auto;height:auto}
   .layout{flex-direction:column}
-  .sidebar{width:100%;border-right:none;border-bottom:1px solid var(--border);overflow:visible;height:auto}
-  .ch-list{max-height:180px}
-  .workspace{min-height:480px}
-  .fft-col.open{width:100%;border-left:none;border-top:1px solid var(--border);min-height:220px}
+  .sidebar{
+    width:100%;min-width:unset;max-width:unset;
+    border-right:none;border-bottom:1px solid var(--border);
+    overflow:visible;height:auto;
+  }
+  .ch-list{max-height:160px}
+  .workspace{min-height:360px}
+  .fft-col.open{
+    width:100%;min-width:unset;max-width:unset;
+    border-left:none;border-top:1px solid var(--border);
+    min-height:200px;
+  }
   .resize-handle-v{display:none}
+  .plot-header{padding:.375rem .5rem;gap:.3rem}
+  .info-pill{font-size:10px;height:24px;padding:0 .4rem}
+  .timeline-label{font-size:9px;min-width:36px}
 }
-@media(prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;animation-duration:.01ms!important}}
+@media(max-width:420px){
+  .topbar{gap:.5rem;padding:.4rem .75rem;min-height:44px}
+  .upload-btn{height:30px;padding:0 .7rem;font-size:12px}
+  .icon-btn,.help-btn{width:30px;height:30px}
+  .modal{width:min(360px,96vw);padding:1.25rem}
+  .modal h2{font-size:15px}
+}
+@media(prefers-reduced-motion:reduce){
+  *{transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
 
 /* ─── TOUR SYSTEM ─────────────────────────────────── */
 .tour-highlight{
@@ -445,7 +468,7 @@ canvas{display:block}
         <div class="stat-cell"><span>Rows</span><strong id="statRows">0</strong></div>
         <div class="stat-cell"><span>Cols</span><strong id="statCols">0</strong></div>
         <div class="stat-cell"><span>Window</span><strong id="statWindow">0</strong></div>
-        <div class="stat-cell"><span>Rate</span><strong id="statRate">—</strong></div>
+        <div class="stat-cell"><span>Rate</span><strong id="statRate">-</strong></div>
       </div>
     </div>
 
@@ -515,8 +538,8 @@ canvas{display:block}
     <!-- Plot header pills -->
     <div class="plot-header">
       <div class="info-pill"><span>Status</span> <strong id="pillStatus">No file</strong></div>
-      <div class="info-pill"><span>Range</span> <strong id="pillRange">—</strong></div>
-      <div class="info-pill"><span>Time</span> <strong id="pillTime">—</strong></div>
+      <div class="info-pill"><span>Range</span> <strong id="pillRange">-</strong></div>
+      <div class="info-pill"><span>Time</span> <strong id="pillTime">-</strong></div>
     </div>
 
     <!-- Main area: plot + FFT -->
@@ -556,7 +579,7 @@ canvas{display:block}
       <!-- FFT panel -->
       <div class="fft-col" id="fftCol">
         <div class="fft-header">
-          <span class="fft-header-title" id="fftHeader">FFT — visible window</span>
+          <span class="fft-header-title" id="fftHeader">FFT: visible window</span>
         </div>
         <!-- FFT channel selector -->
         <div class="fft-ch-bar" id="fftChBar">
@@ -621,7 +644,7 @@ const steps = [
     target: null,
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
     title: 'Welcome to CSV Plotter',
-    body: 'A fast, browser-based signal visualizer — no install, no upload to servers. This short tour walks you through everything in about 30 seconds.',
+    body: 'A fast, browser-based signal visualizer. No install, no server uploads. This short tour walks you through everything in about 30 seconds.',
     arrow: 'none',
     pad: 0,
   },
@@ -629,7 +652,7 @@ const steps = [
     target: () => document.querySelector('.upload-btn'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
     title: 'Upload a CSV',
-    body: 'Click <strong>Upload CSV</strong> to load your file. Any CSV with numeric columns works — ECG, EEG, EMG, EOG, ADC data, whatever. You\'ll be asked for a sampling rate (optional).',
+    body: 'Click <strong>Upload CSV</strong> to load your file. Any CSV with numeric columns works. You\'ll be asked for a sampling rate (optional).',
     arrow: 'top',
     pad: 6,
   },
@@ -914,7 +937,7 @@ const fftCtx  = el.fftCanvas.getContext('2d');
 
 /* ── HELPERS ─────────────────────────────────────── */
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const fmt   = (v, d=3) => Number.isFinite(v) ? v.toFixed(d) : '—';
+const fmt   = (v, d=3) => Number.isFinite(v) ? v.toFixed(d) : '-';
 const fmtN  = v => Number.isFinite(v) ? Math.round(v).toLocaleString() : '0';
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
@@ -983,7 +1006,7 @@ function commitLoad(sr) {
   S.start = 0; S.window = clamp(1000, 32, rows.length || 1000); S.scale = 1;
   S.selected.clear();
   S.fftChannels.clear();
-  const preferred = numericIdx.filter(i => /ch|ecg|eeg|emg|eog|lead|bio|adc|signal/i.test(headers[i]));
+  const preferred = numericIdx.filter(i => /ch|lead|bio|adc|signal/i.test(headers[i]));
   (preferred.length ? preferred : numericIdx).slice(0, 8).forEach(i => {
     S.selected.add(i);
     S.fftChannels.add(i);
@@ -1132,10 +1155,11 @@ el.canvasWrap.addEventListener('wheel', e => {
   if (!S.rows.length) return;
   const canScrollV = el.canvasScroll.scrollHeight > el.canvasScroll.clientHeight + 2;
   const isHorizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+  const wrapW = el.canvasWrap.getBoundingClientRect().width || 600;
 
   if (isHorizontal) {
     e.preventDefault();
-    const step = Math.max(1, Math.round(S.window * 0.04));
+    const step = Math.max(1, Math.round(Math.abs(e.deltaX) * S.window / wrapW));
     S.start = clamp(S.start + (e.deltaX > 0 ? step : -step), 0, Math.max(0, S.rows.length - S.window));
     renderAll();
     return;
@@ -1145,7 +1169,7 @@ el.canvasWrap.addEventListener('wheel', e => {
   if (canScrollV) return;
 
   e.preventDefault();
-  const step = Math.max(1, Math.round(S.window * 0.04));
+  const step = Math.max(1, Math.round(Math.abs(e.deltaY) * S.window / wrapW));
   S.start = clamp(S.start + (e.deltaY > 0 ? step : -step), 0, Math.max(0, S.rows.length - S.window));
   renderAll();
 }, { passive: false });
@@ -1229,7 +1253,7 @@ initResize(
   180,
   () => {
     const maW = el.mainArea.getBoundingClientRect().width;
-    return Math.min(maW * 0.55, maW - 200);
+    return Math.min(maW * 0.55, maW - 220);
   }
 );
 // FFT handle dragging inverts direction (handle is on left of fft panel)
@@ -1250,7 +1274,7 @@ initResize(
     if (!dragging) return;
     const dx = startX - e.clientX; // invert: left = bigger
     const maW = el.mainArea.getBoundingClientRect().width;
-    const maxW = Math.min(maW * 0.55, maW - 200);
+    const maxW = Math.min(maW * 0.55, maW - 220);
     const newW = clamp(startW + dx, 180, maxW);
     el.fftCol.style.width = newW + 'px';
     renderAll();
@@ -1269,7 +1293,7 @@ function updateStats() {
   el.statRows.textContent = fmtN(S.rows.length);
   el.statCols.textContent = fmtN(S.numericIdx.length);
   el.statWindow.textContent = fmtN(Math.min(S.window, S.rows.length));
-  el.statRate.textContent = S.sampleRate ? S.sampleRate + ' Hz' : '—';
+  el.statRate.textContent = S.sampleRate ? S.sampleRate + ' Hz' : '-';
   el.scaleVal.textContent = S.scale === 1 ? 'Auto' : S.scale.toFixed(2) + 'x';
   el.pointsVal.textContent = fmtN(S.window);
 }
@@ -1282,10 +1306,10 @@ function updateSlider() {
   el.tlStart.textContent = S.sampleRate ? fmt(S.start / S.sampleRate, 2) + 's' : fmtN(S.start);
   el.tlEnd.textContent   = S.sampleRate ? fmt((S.rows.length - 1) / S.sampleRate, 2) + 's' : fmtN(S.rows.length - 1);
   const end = Math.min(S.rows.length - 1, S.start + S.window - 1);
-  el.pillRange.textContent = `${fmtN(S.start)} – ${fmtN(end)}`;
+  el.pillRange.textContent = `${fmtN(S.start)} - ${fmtN(end)}`;
   if (S.sampleRate && S.rows.length) {
-    el.pillTime.textContent = `${fmt(S.start / S.sampleRate, 3)}s – ${fmt(end / S.sampleRate, 3)}s`;
-  } else el.pillTime.textContent = '—';
+    el.pillTime.textContent = `${fmt(S.start / S.sampleRate, 3)}s - ${fmt(end / S.sampleRate, 3)}s`;
+  } else el.pillTime.textContent = '-';
   el.pillStatus.textContent = S.rows.length ? (S.fileName || 'Loaded') : 'No file';
 }
 
@@ -1533,7 +1557,7 @@ function drawFFT() {
   fftCtx.restore();
 
   if (!fftSeries.length) {
-    el.fftHeader.textContent = 'FFT — select channels above';
+    el.fftHeader.textContent = 'FFT: select channels above';
     fftCtx.save();
     fftCtx.fillStyle = cssVar('--faint');
     fftCtx.font = `12px ${cssVar('--font')}`;
@@ -1606,7 +1630,7 @@ function drawFFT() {
 
   drawFFTAxes(fftCtx, M, pW, pH, W, H, maxFreq, globalMax);
 
-  const capLabel = S.sampleRate ? `FFT  0–${Math.round(maxFreq)} Hz` : 'FFT — set sample rate for Hz';
+  const capLabel = S.sampleRate ? `FFT 0-${Math.round(maxFreq)} Hz` : 'FFT: set sample rate for Hz';
   el.fftHeader.textContent = capLabel;
 }
 
@@ -1657,7 +1681,23 @@ function renderAll() {
 const ro = new ResizeObserver(renderAll);
 ro.observe(el.canvasWrap);
 ro.observe(el.fftCanvas.parentElement);
-window.addEventListener('resize', renderAll, { passive: true });
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 680) {
+    const maxSW = Math.min(400, window.innerWidth * 0.4);
+    const currSW = el.sidebar.getBoundingClientRect().width;
+    if (currSW > maxSW) el.sidebar.style.width = maxSW + 'px';
+    else if (currSW < 150) el.sidebar.style.width = '150px';
+  }
+  if (S.fftOpen) {
+    const maW = el.mainArea.getBoundingClientRect().width;
+    const maxFW = Math.min(maW * 0.55, maW - 220);
+    if (maxFW > 0) {
+      const currFW = el.fftCol.getBoundingClientRect().width;
+      if (currFW > maxFW) el.fftCol.style.width = maxFW + 'px';
+    }
+  }
+  renderAll();
+}, { passive: true });
 
 /* ── INIT ────────────────────────────────────────── */
 renderAll();
