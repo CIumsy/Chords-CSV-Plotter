@@ -101,7 +101,7 @@ canvas{display:block}
 
 /* ─── SIDEBAR ────────────────────────────────────── */
 .sidebar{
-  width:256px; min-width:160px; max-width:400px; flex-shrink:0; display:flex; flex-direction:column;
+  width:256px; min-width:180px; max-width:400px; flex-shrink:0; display:flex; flex-direction:column;
   border-right:1px solid var(--border); background:var(--surf); overflow:hidden;
 }
 .sb-section{padding:.75rem; border-bottom:1px solid var(--divider)}
@@ -118,7 +118,7 @@ canvas{display:block}
 .stat-cell span{font-size:10px;color:var(--muted)}
 .stat-cell strong{font-size:13px;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .ctrl-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem}
-.ctrl-row label{font-size:12px;color:var(--muted);flex:1;min-width:0}
+.ctrl-row label{font-size:12px;color:var(--muted);flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .ctrl-row .ctrl-right{display:flex;align-items:center;gap:.25rem;flex-shrink:0}
 .adj-btn{
   width:26px;height:26px;display:inline-grid;place-items:center;font-size:15px;font-weight:700;
@@ -281,7 +281,7 @@ canvas{display:block}
   .sidebar{width:220px}
 }
 @media(max-width:900px){
-  .sidebar{width:190px;min-width:150px}
+  .sidebar{width:190px;min-width:180px}
   .fft-col.open{width:32%;min-width:160px}
 }
 @media(max-width:680px){
@@ -484,7 +484,7 @@ canvas{display:block}
 
       <!-- Scale -->
       <div class="ctrl-row">
-        <label>Vert. scale</label>
+        <label>Zoom Y</label>
         <div class="ctrl-right">
           <button class="adj-btn" id="scaleDown">−</button>
           <span class="adj-val" id="scaleVal">Auto</span>
@@ -494,7 +494,7 @@ canvas{display:block}
 
       <!-- Points -->
       <div class="ctrl-row">
-        <label>Visible points</label>
+        <label>Zoom X</label>
         <div class="ctrl-right">
           <button class="adj-btn" id="pointsDown">−</button>
           <span class="adj-val" id="pointsVal">1000</span>
@@ -660,7 +660,7 @@ const steps = [
     target: () => document.querySelector('.sb-section:nth-child(2)'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>`,
     title: 'Controls',
-    body: 'Set the <strong>sample rate</strong> to show real timestamps on the x-axis. Use <strong>Vert. scale ±</strong> to zoom in/out vertically. <strong>Visible points ±</strong> controls how many samples are shown at once.',
+    body: 'Set the <strong>sample rate</strong> to show real timestamps on the x-axis. Use <strong>Zoom Y ±</strong> to zoom in or out vertically. <strong>Zoom X ±</strong> controls how many samples are visible at once, or pinch on the plot.',
     arrow: 'right',
     pad: 4,
   },
@@ -708,7 +708,7 @@ const steps = [
     target: null,
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
     title: 'Keyboard shortcuts',
-    body: `<kbd>←</kbd> <kbd>→</kbd> scroll data &nbsp;·&nbsp; <kbd>[</kbd> <kbd>]</kbd> scale vertically<br><kbd>−</kbd> <kbd>+</kbd> more / fewer points<br><kbd>Fit all</kbd> button snaps to whole recording<br><kbd>Auto scale</kbd> resets vertical zoom to 1×<br><br>Click <strong>?</strong> in the top bar anytime to replay this tour.`,
+    body: `<kbd>←</kbd> <kbd>→</kbd> scroll &nbsp;·&nbsp; <kbd>[</kbd> <kbd>]</kbd> Zoom Y<br><kbd>−</kbd> zoom out X &nbsp;·&nbsp; <kbd>+</kbd> zoom in X<br>Pinch on plot to zoom X on trackpad<br><kbd>Fit all</kbd> snaps to whole recording<br><br>Click <strong>?</strong> in the top bar anytime to replay this tour.`,
     arrow: 'none',
     pad: 0,
   },
@@ -1152,8 +1152,8 @@ el.srInput.addEventListener('input', () => {
 });
 el.scaleDown.addEventListener('click', () => { S.scale = clamp(S.scale * 1.33, 0.05, 200); renderAll(); });
 el.scaleUp.addEventListener('click',   () => { S.scale = clamp(S.scale / 1.33, 0.05, 200); renderAll(); });
-el.pointsDown.addEventListener('click',() => { S.window = clamp(Math.round(S.window * 0.75), 32, Math.max(32, S.rows.length)); renderAll(); });
-el.pointsUp.addEventListener('click',  () => { S.window = clamp(Math.round(S.window * 1.33), 32, Math.max(32, S.rows.length)); renderAll(); });
+el.pointsDown.addEventListener('click',() => { S.window = clamp(Math.round(S.window * 1.33), 32, Math.max(32, S.rows.length)); renderAll(); });
+el.pointsUp.addEventListener('click',  () => { S.window = clamp(Math.round(S.window * 0.75), 32, Math.max(32, S.rows.length)); renderAll(); });
 el.autoBtn.addEventListener('click',   () => { S.scale = 1; computeChannelRanges(); renderAll(); });
 el.fitBtn.addEventListener('click',    () => { S.window = Math.max(32, S.rows.length); S.start = 0; renderAll(); });
 el.fftBtn.addEventListener('click',    () => {
@@ -1168,6 +1168,19 @@ el.scrollSlider.addEventListener('input', () => { S.start = Number(el.scrollSlid
 /* ── WHEEL / TRACKPAD SCROLL ─────────────────────── */
 el.canvasWrap.addEventListener('wheel', e => {
   if (!S.rows.length) return;
+
+  // Pinch zoom on trackpad (Ctrl+wheel) → Zoom X, centered on current view
+  if (e.ctrlKey) {
+    e.preventDefault();
+    const oldW = S.window;
+    const factor = Math.pow(1.003, e.deltaY);
+    S.window = clamp(Math.round(oldW * factor), 32, Math.max(32, S.rows.length));
+    const center = S.start + oldW / 2;
+    S.start = clamp(Math.round(center - S.window / 2), 0, Math.max(0, S.rows.length - S.window));
+    renderAll();
+    return;
+  }
+
   const canScrollV = el.canvasScroll.scrollHeight > el.canvasScroll.clientHeight + 2;
   const isHorizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
   const wrapW = el.canvasWrap.getBoundingClientRect().width || 600;
@@ -1197,8 +1210,8 @@ window.addEventListener('keydown', e => {
   if (e.key === 'ArrowRight') { S.start = Math.min(Math.max(0, S.rows.length - S.window), S.start + W); renderAll(); e.preventDefault(); }
   if (e.key === '[') { S.scale = clamp(S.scale * 1.33, 0.05, 200); renderAll(); }
   if (e.key === ']') { S.scale = clamp(S.scale / 1.33, 0.05, 200); renderAll(); }
-  if (e.key === '-') { S.window = clamp(Math.round(S.window * 0.75), 32, Math.max(32, S.rows.length)); renderAll(); }
-  if (e.key === '=' || e.key === '+') { S.window = clamp(Math.round(S.window * 1.33), 32, Math.max(32, S.rows.length)); renderAll(); }
+  if (e.key === '-') { S.window = clamp(Math.round(S.window * 1.33), 32, Math.max(32, S.rows.length)); renderAll(); }
+  if (e.key === '=' || e.key === '+') { S.window = clamp(Math.round(S.window * 0.75), 32, Math.max(32, S.rows.length)); renderAll(); }
 });
 
 /* ── RESIZE HANDLES ──────────────────────────────── */
@@ -1255,7 +1268,7 @@ initResize(
   () => el.sidebar,
   () => el.sidebar.getBoundingClientRect().width,
   w  => { el.sidebar.style.width = w + 'px'; },
-  160,
+  180,
   () => Math.min(400, window.innerWidth * 0.4)
 );
 
@@ -1700,7 +1713,7 @@ window.addEventListener('resize', () => {
     const maxSW = Math.min(400, window.innerWidth * 0.4);
     const currSW = el.sidebar.getBoundingClientRect().width;
     if (currSW > maxSW) el.sidebar.style.width = maxSW + 'px';
-    else if (currSW < 150) el.sidebar.style.width = '150px';
+    else if (currSW < 180) el.sidebar.style.width = '180px';
   }
   if (S.fftOpen) {
     const maW = el.mainArea.getBoundingClientRect().width;
