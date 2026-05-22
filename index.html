@@ -908,7 +908,8 @@ function trackColor(i) {
 /* ── STATE ────────────────────────────────────────── */
 const S = {
   headers: [], numericIdx: [], rows: [], selected: new Set(),
-  fftChannels: new Set(),  // independently controlled FFT channel visibility
+  fftChannels: new Set(),
+  channelRanges: {},
   sampleRate: null, start: 0, window: 1000, scale: 1, fftOpen: false, fileName: '',
 };
 
@@ -940,6 +941,20 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const fmt   = (v, d=3) => Number.isFinite(v) ? v.toFixed(d) : '-';
 const fmtN  = v => Number.isFinite(v) ? Math.round(v).toLocaleString() : '0';
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+/* ── CHANNEL RANGES ──────────────────────────────── */
+function computeChannelRanges() {
+  S.channelRanges = {};
+  for (const ci of S.numericIdx) {
+    let lo = Infinity, hi = -Infinity;
+    for (let r = 0; r < S.rows.length; r++) {
+      const v = S.rows[r][ci];
+      if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    }
+    if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo = -1; hi = 1; }
+    S.channelRanges[ci] = { lo, hi };
+  }
+}
 
 /* ── THEME ───────────────────────────────────────── */
 function setThemeIcon() {
@@ -1011,7 +1026,7 @@ function commitLoad(sr) {
     S.selected.add(i);
     S.fftChannels.add(i);
   });
-  buildChannelList(); renderAll();
+  buildChannelList(); computeChannelRanges(); renderAll();
   el.srInput.value = S.sampleRate || '';
   el.emptyState.style.display = 'none';
 }
@@ -1139,7 +1154,7 @@ el.scaleDown.addEventListener('click', () => { S.scale = clamp(S.scale * 1.33, 0
 el.scaleUp.addEventListener('click',   () => { S.scale = clamp(S.scale / 1.33, 0.05, 200); renderAll(); });
 el.pointsDown.addEventListener('click',() => { S.window = clamp(Math.round(S.window * 0.75), 32, Math.max(32, S.rows.length)); renderAll(); });
 el.pointsUp.addEventListener('click',  () => { S.window = clamp(Math.round(S.window * 1.33), 32, Math.max(32, S.rows.length)); renderAll(); });
-el.autoBtn.addEventListener('click',   () => { S.scale = 1; renderAll(); });
+el.autoBtn.addEventListener('click',   () => { S.scale = 1; computeChannelRanges(); renderAll(); });
 el.fitBtn.addEventListener('click',    () => { S.window = Math.max(32, S.rows.length); S.start = 0; renderAll(); });
 el.fftBtn.addEventListener('click',    () => {
   S.fftOpen = !S.fftOpen;
@@ -1397,9 +1412,8 @@ function drawMain() {
     const innerTop = bandTop + 6;
     const innerH   = Math.max(12, bandH - 12);
 
-    let lo = Infinity, hi = -Infinity;
-    for (const v of s.vals) { if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } }
-    if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo = -1; hi = 1; }
+    const range = S.channelRanges[s.ci] || { lo: -1, hi: 1 };
+    const { lo, hi } = range;
     const center    = (lo + hi) / 2;
     const halfRange = Math.max((hi - lo) / 2, 1e-12) * S.scale * 1.1;
     const yMin = center - halfRange;
