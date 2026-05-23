@@ -16,7 +16,7 @@
   --border:rgba(40,37,29,0.14); --divider:rgba(40,37,29,0.07);
   --text:#1e1c17; --muted:#6b6963; --faint:#a8a6a0;
   --primary:#0057d8; --primary-h:#004ab8; --primary-soft:rgba(0,87,216,0.12);
-  --success:#1a6b38; --error:#b51e1e;
+  --success:#1a6b38; --error:#c2410c;
   --shadow-sm:0 1px 3px rgba(0,0,0,0.08);
   --shadow-md:0 4px 16px rgba(0,0,0,0.1);
   --shadow-lg:0 12px 40px rgba(0,0,0,0.14);
@@ -25,8 +25,8 @@
   --space-5:1.25rem; --space-6:1.5rem; --space-8:2rem;
   --font:'Satoshi',system-ui,sans-serif;
   --mono:'JetBrains Mono','Fira Mono','Consolas',monospace;
-  --c1:#0057d8; --c2:#c2410c; --c3:#057a55; --c4:#7c3aed;
-  --c5:#b91c1c; --c6:#0369a1; --c7:#9d174d; --c8:#065f46;
+  --c1:#0057d8; --c2:#0891b2; --c3:#057a55; --c4:#7c3aed;
+  --c5:#d97706; --c6:#0369a1; --c7:#9d174d; --c8:#065f46;
   --grid:rgba(0,0,0,0.07);
   --axis-line:rgba(0,0,0,0.2);
 }
@@ -946,7 +946,7 @@ function setThemeIcon() {
 el.themeBtn.addEventListener('click', () => {
   const d = document.documentElement;
   d.dataset.theme = d.dataset.theme === 'dark' ? 'light' : 'dark';
-  setThemeIcon(); renderAll();
+  setThemeIcon(); buildChannelList(); renderAll();
 });
 setThemeIcon();
 
