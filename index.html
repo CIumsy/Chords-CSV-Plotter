@@ -363,19 +363,6 @@ canvas{display:block}
 }
 .tour-card.visible{ opacity:1; pointer-events:all; transform:translateY(0); }
 
-/* Arrow pointer */
-.tour-card::before{
-  content:''; position:absolute;
-  width:10px; height:10px;
-  background:var(--surf); border:1px solid var(--border);
-  transform:rotate(45deg);
-  transition:top .28s cubic-bezier(.4,0,.2,1), left .28s cubic-bezier(.4,0,.2,1);
-}
-.tour-card[data-arrow="top"]::before   { top:-6px; left:24px; border-bottom:none; border-right:none; }
-.tour-card[data-arrow="bottom"]::before{ bottom:-6px; left:24px; border-top:none; border-left:none; }
-.tour-card[data-arrow="left"]::before  { left:-6px; top:20px; border-right:none; border-bottom:none; }
-.tour-card[data-arrow="right"]::before { right:-6px; top:20px; border-left:none; border-top:none; }
-.tour-card[data-arrow="none"]::before  { display:none; }
 
 .tour-top{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
 .tour-badge{
