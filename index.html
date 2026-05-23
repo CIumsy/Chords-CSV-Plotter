@@ -1,0 +1,1720 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Chords CSV Plotter</title>
+<link rel="preconnect" href="https://api.fontshare.com"/>
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&display=swap" rel="stylesheet"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet"/>
+<style>
+/* ─── DESIGN TOKENS ──────────────────────────────── */
+:root,[data-theme="light"]{
+  --bg:#f2f0eb; --surf:#faf9f6; --surf2:#f4f2ee; --surf3:#eceae4;
+  --border:rgba(40,37,29,0.14); --divider:rgba(40,37,29,0.07);
+  --text:#1e1c17; --muted:#6b6963; --faint:#a8a6a0;
+  --primary:#0057d8; --primary-h:#004ab8; --primary-soft:rgba(0,87,216,0.12);
+  --success:#1a6b38; --error:#c2410c;
+  --shadow-sm:0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md:0 4px 16px rgba(0,0,0,0.1);
+  --shadow-lg:0 12px 40px rgba(0,0,0,0.14);
+  --radius-sm:5px; --radius-md:8px; --radius-lg:12px; --radius-xl:16px; --radius-full:9999px;
+  --space-1:.25rem; --space-2:.5rem; --space-3:.75rem; --space-4:1rem;
+  --space-5:1.25rem; --space-6:1.5rem; --space-8:2rem;
+  --font:'Satoshi',system-ui,sans-serif;
+  --mono:'JetBrains Mono','Fira Mono','Consolas',monospace;
+  --c1:#0057d8; --c2:#0891b2; --c3:#057a55; --c4:#7c3aed;
+  --c5:#d97706; --c6:#0369a1; --c7:#9d174d; --c8:#065f46;
+  --grid:rgba(0,0,0,0.07);
+  --axis-line:rgba(0,0,0,0.2);
+}
+[data-theme="dark"]{
+  --bg:#111110; --surf:#1b1a18; --surf2:#222120; --surf3:#2a2927;
+  --border:rgba(255,255,255,0.1); --divider:rgba(255,255,255,0.06);
+  --text:#ededeb; --muted:#9b9995; --faint:#5c5a56;
+  --primary:#5b9bff; --primary-h:#7db1ff; --primary-soft:rgba(91,155,255,0.15);
+  --success:#4ade80; --error:#f87171;
+  --shadow-sm:0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md:0 6px 20px rgba(0,0,0,0.5);
+  --shadow-lg:0 16px 48px rgba(0,0,0,0.6);
+  --c1:#00e5ff; --c2:#39ff14; --c3:#ff5cf0; --c4:#ffd60a;
+  --c5:#7c7cff; --c6:#ff7a00; --c7:#00ffb2; --c8:#ff4d6d;
+  --grid:rgba(255,255,255,0.06);
+  --axis-line:rgba(255,255,255,0.18);
+}
+
+/* ─── RESET & BASE ───────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--font);
+  font-size:14px; line-height:1.5; height:100dvh; overflow:hidden; display:flex; flex-direction:column;
+}
+button{cursor:pointer;background:none;border:none;font:inherit;color:inherit}
+input,select{font:inherit;color:inherit}
+canvas{display:block}
+
+/* ─── TOP BAR ────────────────────────────────────── */
+.topbar{
+  display:flex; align-items:center; gap:.75rem;
+  padding:.5rem 1rem; border-bottom:1px solid var(--border);
+  background:var(--surf); flex-shrink:0; min-height:48px;
+}
+.logo{display:flex;align-items:center;gap:.5rem;font-size:15px;font-weight:700;letter-spacing:-.02em;white-space:nowrap;flex-shrink:0}
+.logo-text{display:flex;align-items:baseline;gap:.3rem}
+.logo-chords{
+  font-family:'Inter',sans-serif;font-weight:600;font-size:1.5rem;line-height:1;
+  background:linear-gradient(to right,#ec4899,#a855f7,#3b82f6);
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:transparent;
+  transition:all .3s;
+}
+.logo img{width:30px;height:30px;border-radius:7px;flex-shrink:0}
+.topbar-actions{display:flex;gap:.5rem;align-items:center;margin-left:auto}
+.upload-btn{
+  display:inline-flex; align-items:center; gap:.4rem; height:34px; padding:0 .875rem;
+  background:var(--primary); color:#fff; border-radius:var(--radius-md); font-size:13px; font-weight:600;
+  transition:background .15s ease, transform .12s ease;
+}
+.upload-btn:hover{background:var(--primary-h);transform:translateY(-1px)}
+.upload-btn:active{transform:none}
+.icon-btn{
+  width:34px;height:34px;display:inline-grid;place-items:center;
+  border-radius:var(--radius-md); border:1px solid var(--border); background:var(--surf2);
+  transition:background .15s,transform .12s;
+}
+.icon-btn:hover{background:var(--surf3);transform:translateY(-1px)}
+.sr-only{position:absolute;width:1px;height:1px;clip:rect(0,0,0,0);overflow:hidden}
+
+/* ─── LAYOUT ─────────────────────────────────────── */
+.layout{display:flex;flex:1;min-height:0;overflow:hidden}
+
+/* ─── RESIZE HANDLES ──────────────────────────────── */
+.resize-handle-v{
+  width:6px; flex-shrink:0; cursor:col-resize; background:transparent;
+  position:relative; z-index:20; display:flex; align-items:center; justify-content:center;
+}
+.resize-handle-v::after{
+  content:''; position:absolute; top:0; bottom:0; left:2px; right:2px;
+  border-radius:3px; background:transparent; transition:background .15s;
+}
+.resize-handle-v:hover::after,.resize-handle-v.dragging::after{
+  background:var(--primary);
+}
+.resize-handle-v .drag-dots{
+  position:relative;z-index:1;display:flex;flex-direction:column;gap:3px;pointer-events:none;opacity:0;
+  transition:opacity .15s;
+}
+.resize-handle-v:hover .drag-dots,.resize-handle-v.dragging .drag-dots{opacity:1}
+.drag-dots span{width:2px;height:2px;border-radius:50%;background:var(--primary);display:block}
+
+/* ─── SIDEBAR ────────────────────────────────────── */
+.sidebar{
+  width:256px; min-width:180px; max-width:400px; flex-shrink:0; display:flex; flex-direction:column;
+  border-right:1px solid var(--border); background:var(--surf); overflow:hidden;
+}
+.sb-section{padding:.75rem; border-bottom:1px solid var(--divider)}
+.sb-section:last-child{border-bottom:none;flex:1;min-height:0;display:flex;flex-direction:column}
+.sb-label{
+  font-size:10px; text-transform:uppercase; letter-spacing:.08em;
+  color:var(--muted); margin-bottom:.5rem; display:flex; align-items:center; justify-content:space-between;
+}
+.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:.375rem}
+.stat-cell{
+  background:var(--surf3); border-radius:var(--radius-sm); padding:.375rem .5rem;
+  display:flex; flex-direction:column; gap:.1rem;
+}
+.stat-cell span{font-size:10px;color:var(--muted)}
+.stat-cell strong{font-size:13px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.ctrl-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem}
+.ctrl-row label{font-size:12px;color:var(--muted);flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ctrl-row .ctrl-right{display:flex;align-items:center;gap:.25rem;flex-shrink:0}
+.adj-btn{
+  width:26px;height:26px;display:inline-grid;place-items:center;font-size:15px;font-weight:700;
+  border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surf2);
+  transition:background .12s;
+}
+.adj-btn:hover{background:var(--surf3)}
+.adj-val{font-family:var(--mono);font-size:11px;min-width:52px;text-align:center;color:var(--text)}
+.sb-input{
+  width:100%;height:30px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surf2);padding:0 .5rem;font-size:12px;font-family:var(--mono);outline:none;
+}
+.sb-input:focus{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-soft)}
+.btn-row{display:flex;gap:.375rem;flex-wrap:wrap;margin-top:.4rem}
+.pill-btn{
+  height:28px;padding:0 .6rem;border-radius:var(--radius-full);font-size:11px;font-weight:600;
+  border:1px solid var(--border);background:var(--surf2);transition:background .12s,transform .1s;
+}
+.pill-btn:hover{background:var(--surf3);transform:translateY(-1px)}
+.pill-btn.active{background:var(--primary);color:#fff;border-color:transparent}
+.ch-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:.25rem;padding-right:.125rem}
+.ch-item{
+  display:flex;align-items:center;gap:.5rem;padding:.3rem .4rem;
+  border-radius:var(--radius-sm); cursor:pointer; user-select:none;
+  transition:background .1s; border:1px solid transparent;
+}
+.ch-item:hover{background:var(--surf3)}
+.ch-item.checked{background:color-mix(in srgb, var(--primary-soft) 60%, transparent); border-color:var(--border)}
+.ch-cb{width:15px;height:15px;accent-color:var(--primary);flex-shrink:0}
+.ch-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ch-name{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+
+/* ─── WORKSPACE ──────────────────────────────────── */
+.workspace{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.plot-header{
+  display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;
+  border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap;
+}
+.info-pill{
+  display:inline-flex;align-items:center;gap:.3rem;padding:0 .5rem;height:26px;
+  background:var(--surf2);border:1px solid var(--border);border-radius:var(--radius-full);
+  font-size:11px;
+}
+.info-pill strong{font-family:var(--mono);font-size:11px}
+.main-area{display:flex;flex:1;min-height:0;overflow:hidden}
+.plot-col{flex:1;min-width:120px;display:flex;flex-direction:column;overflow:hidden}
+.canvas-wrap{
+  flex:1;min-height:0;position:relative;overflow:hidden;
+  background:var(--surf);
+}
+.canvas-scroll{
+  width:100%;height:100%;overflow-y:auto;overflow-x:hidden;
+}
+#mainCanvas{display:block;width:100%}
+.timeline{
+  flex-shrink:0;display:flex;align-items:center;gap:.5rem;
+  padding:.375rem .75rem; border-top:1px solid var(--border);background:var(--surf);
+}
+.timeline-label{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;min-width:48px}
+#scrollSlider{flex:1;accent-color:var(--primary);height:20px;cursor:pointer}
+
+/* ─── FFT PANEL ──────────────────────────────────── */
+.fft-col{
+  width:0;overflow:hidden;border-left:1px solid var(--border);
+  display:flex;flex-direction:column;flex-shrink:0;
+  min-width:0; max-width:55%;
+  transition:none;
+}
+.fft-col.open{width:28%;min-width:180px}
+.fft-header{
+  padding:.4rem .75rem;border-bottom:1px solid var(--border);
+  font-size:11px;color:var(--muted);flex-shrink:0;
+  display:flex;align-items:center;justify-content:space-between;gap:.5rem;
+}
+.fft-header-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* FFT channel selector bar */
+.fft-ch-bar{
+  padding:.3rem .5rem; border-bottom:1px solid var(--divider);
+  display:flex; flex-wrap:wrap; gap:.2rem; flex-shrink:0;
+  background:var(--surf);
+}
+.fft-ch-pill{
+  display:inline-flex; align-items:center; gap:.25rem;
+  height:20px; padding:0 .45rem; border-radius:var(--radius-full);
+  font-size:10px; font-weight:600; border:1px solid var(--border);
+  background:var(--surf2); cursor:pointer; user-select:none;
+  transition:background .1s, border-color .1s, color .1s;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100px;
+}
+.fft-ch-pill:hover{background:var(--surf3)}
+.fft-ch-pill.active{
+  border-color:var(--pill-color, var(--primary));
+  background:color-mix(in srgb, var(--pill-color, var(--primary)) 18%, var(--surf));
+  color:var(--pill-color, var(--primary));
+}
+.fft-ch-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.fft-all-btn{
+  height:20px; padding:0 .4rem; border-radius:var(--radius-full);
+  font-size:10px; font-weight:700; border:1px solid var(--border);
+  background:var(--surf3); cursor:pointer; color:var(--muted);
+  transition:background .1s;white-space:nowrap;
+}
+.fft-all-btn:hover{background:var(--surf2);color:var(--text)}
+
+.fft-wrap{flex:1;min-height:0;background:var(--surf);overflow:hidden}
+#fftCanvas{width:100%;height:100%;display:block}
+
+/* ─── EMPTY STATE ────────────────────────────────── */
+.empty-state{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:.75rem;pointer-events:none;
+}
+.empty-icon{width:48px;height:48px;color:var(--faint)}
+.empty-state h3{font-size:15px;font-weight:600;color:var(--muted)}
+.empty-state p{font-size:12px;color:var(--faint);max-width:28ch;text-align:center;line-height:1.6}
+
+/* ─── MODAL OVERLAY ──────────────────────────────── */
+.modal-backdrop{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
+  display:none;align-items:center;justify-content:center;z-index:100;
+}
+.modal-backdrop.visible{display:flex}
+.modal{
+  background:var(--surf);border:1px solid var(--border);border-radius:var(--radius-xl);
+  padding:1.5rem;width:min(440px,92vw);box-shadow:var(--shadow-lg);
+  display:flex;flex-direction:column;gap:1rem;
+}
+.modal h2{font-size:16px;font-weight:700}
+.modal p{font-size:13px;color:var(--muted);line-height:1.6}
+.modal-input-row{display:flex;flex-direction:column;gap:.375rem}
+.modal-input-row label{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.modal-big-input{
+  width:100%;height:44px;border:1.5px solid var(--border);border-radius:var(--radius-md);
+  background:var(--surf2);padding:0 .75rem;font-size:16px;font-family:var(--mono);outline:none;
+}
+.modal-big-input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.modal-actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:.25rem}
+.modal-skip{
+  height:40px;padding:0 1rem;border-radius:var(--radius-md);font-size:13px;font-weight:500;
+  border:1px solid var(--border);background:none;color:var(--muted);transition:background .15s;
+}
+.modal-skip:hover{background:var(--surf3)}
+.modal-select{
+  height:40px;padding:0 1.25rem;border-radius:var(--radius-md);font-size:14px;font-weight:700;
+  background:var(--primary);color:#fff;border:none;transition:background .15s,transform .1s;
+  box-shadow:0 2px 8px var(--primary-soft);
+}
+.modal-select:hover{background:var(--primary-h);transform:translateY(-1px)}
+.modal-select:active{transform:none}
+
+/* ─── SCROLLBAR ──────────────────────────────────── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--faint);border-radius:9px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+
+/* ─── RESPONSIVE ─────────────────────────────────── */
+@media(max-width:1100px){
+  .sidebar{width:220px}
+}
+@media(max-width:900px){
+  .sidebar{width:190px;min-width:180px}
+  .fft-col.open{width:32%;min-width:160px}
+}
+@media(max-width:680px){
+  body{overflow:auto;height:auto}
+  .layout{flex-direction:column}
+  .sidebar{
+    width:100%;min-width:unset;max-width:unset;
+    border-right:none;border-bottom:1px solid var(--border);
+    overflow:visible;height:auto;
+  }
+  .ch-list{max-height:160px}
+  .workspace{min-height:360px}
+  .fft-col.open{
+    width:100%;min-width:unset;max-width:unset;
+    border-left:none;border-top:1px solid var(--border);
+    min-height:200px;
+  }
+  .resize-handle-v{display:none}
+  .plot-header{padding:.375rem .5rem;gap:.3rem}
+  .info-pill{font-size:10px;height:24px;padding:0 .4rem}
+  .timeline-label{font-size:9px;min-width:36px}
+}
+@media(max-width:420px){
+  .topbar{gap:.5rem;padding:.4rem .75rem;min-height:44px}
+  .upload-btn{height:30px;padding:0 .7rem;font-size:12px}
+  .icon-btn,.help-btn{width:30px;height:30px}
+  .modal{width:min(360px,96vw);padding:1.25rem}
+  .modal h2{font-size:15px}
+}
+@media(prefers-reduced-motion:reduce){
+  *{transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
+
+/* ─── TOUR SYSTEM ─────────────────────────────────── */
+.tour-highlight{
+  position:fixed; z-index:300; pointer-events:none;
+  border-radius:8px;
+  box-shadow:0 0 0 3px var(--primary), 0 0 0 9999px rgba(0,0,0,.62);
+  transition:top .28s cubic-bezier(.4,0,.2,1),
+             left .28s cubic-bezier(.4,0,.2,1),
+             width .28s cubic-bezier(.4,0,.2,1),
+             height .28s cubic-bezier(.4,0,.2,1),
+             opacity .2s ease;
+  opacity:0;
+}
+.tour-highlight.visible{ opacity:1; }
+
+/* Full-screen dim for steps with no target */
+.tour-dim{
+  position:fixed; inset:0; z-index:299;
+  background:rgba(0,0,0,.62);
+  opacity:0; pointer-events:none;
+  transition:opacity .22s ease;
+}
+.tour-dim.visible{ opacity:1; pointer-events:all; }
+
+/* The tooltip card */
+.tour-card{
+  position:fixed; z-index:301;
+  width:300px;
+  background:var(--surf); border:1px solid var(--border);
+  border-radius:var(--radius-xl); box-shadow:var(--shadow-lg);
+  padding:1.25rem 1.25rem 1rem;
+  display:flex; flex-direction:column; gap:.85rem;
+  opacity:0; pointer-events:none;
+  transition:opacity .22s ease, transform .28s cubic-bezier(.4,0,.2,1);
+  transform:translateY(6px);
+}
+.tour-card.visible{ opacity:1; pointer-events:all; transform:translateY(0); }
+
+
+.tour-top{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.tour-badge{
+  display:inline-flex;align-items:center;gap:.3rem;
+  height:20px;padding:0 .5rem;border-radius:var(--radius-full);
+  background:var(--primary-soft);color:var(--primary);
+  font-size:10px;font-weight:700;letter-spacing:.04em;
+}
+.tour-step-dots{display:flex;gap:.28rem;align-items:center}
+.tour-dot{
+  width:5px;height:5px;border-radius:50%;background:var(--faint);
+  transition:background .18s, width .18s, height .18s;
+}
+.tour-dot.active{background:var(--primary);width:14px;border-radius:3px}
+
+.tour-close{
+  width:22px;height:22px;display:grid;place-items:center;
+  border-radius:50%;border:1px solid var(--border);background:var(--surf2);
+  color:var(--muted);font-size:13px;flex-shrink:0;
+  transition:background .12s,color .12s;
+}
+.tour-close:hover{background:var(--surf3);color:var(--text)}
+
+.tour-icon{
+  width:36px;height:36px;border-radius:var(--radius-md);
+  background:var(--primary-soft);display:grid;place-items:center;
+  color:var(--primary);flex-shrink:0;
+}
+.tour-title-row{display:flex;align-items:center;gap:.65rem}
+.tour-title{font-size:14px;font-weight:700;line-height:1.3}
+.tour-body{font-size:12.5px;color:var(--muted);line-height:1.65}
+.tour-body kbd{
+  display:inline-block;padding:.05rem .35rem;border-radius:4px;
+  background:var(--surf3);border:1px solid var(--border);
+  font-family:var(--mono);font-size:11px;color:var(--text);
+}
+.tour-actions{display:flex;align-items:center;gap:.4rem;justify-content:flex-end;margin-top:.1rem}
+.tour-btn-skip{
+  height:30px;padding:0 .75rem;border-radius:var(--radius-md);
+  font-size:12px;font-weight:500;color:var(--muted);
+  border:1px solid var(--border);background:none;transition:background .12s;
+}
+.tour-btn-skip:hover{background:var(--surf3)}
+.tour-btn-prev{
+  height:30px;padding:0 .75rem;border-radius:var(--radius-md);
+  font-size:12px;font-weight:600;
+  border:1px solid var(--border);background:var(--surf2);transition:background .12s;
+}
+.tour-btn-prev:hover{background:var(--surf3)}
+.tour-btn-next{
+  height:30px;padding:0 1rem;border-radius:var(--radius-md);
+  font-size:12px;font-weight:700;
+  background:var(--primary);color:#fff;border:none;
+  box-shadow:0 2px 8px var(--primary-soft);
+  transition:background .12s,transform .1s;
+}
+.tour-btn-next:hover{background:var(--primary-h);transform:translateY(-1px)}
+.tour-btn-next:active{transform:none}
+
+/* Help button in topbar */
+.help-btn{
+  width:34px;height:34px;display:inline-grid;place-items:center;
+  border-radius:var(--radius-md); border:1px solid var(--border); background:var(--surf2);
+  font-size:14px;font-weight:700;color:var(--muted);
+  transition:background .15s,color .12s,transform .12s;
+}
+.help-btn:hover{background:var(--surf3);color:var(--text);transform:translateY(-1px)}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header class="topbar">
+  <div class="logo">
+    <img src="chords-logo-192x192.png" alt="Chords logo"/>
+    <div class="logo-text"><span class="logo-chords">Chords</span> CSV Plotter</div>
+  </div>
+  <div class="topbar-actions">
+    <button class="upload-btn" type="button" onclick="document.getElementById('csvInput').click()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Upload CSV
+    </button>
+    <input id="csvInput" type="file" accept=".csv,text/csv" class="sr-only"/>
+    <button id="helpBtn" class="help-btn" aria-label="Show tour" title="Show guide">?</button>
+    <button id="themeBtn" class="icon-btn" aria-label="Toggle theme"></button>
+  </div>
+</header>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+
+    <!-- Dataset info -->
+    <div class="sb-section">
+      <div class="sb-label">Dataset</div>
+      <div class="stats-row">
+        <div class="stat-cell"><span>Rows</span><strong id="statRows">0</strong></div>
+        <div class="stat-cell"><span>Cols</span><strong id="statCols">0</strong></div>
+        <div class="stat-cell"><span>Window</span><strong id="statWindow">0</strong></div>
+        <div class="stat-cell"><span>Rate</span><strong id="statRate">-</strong></div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="sb-section">
+      <div class="sb-label">Controls</div>
+
+      <!-- Sampling rate -->
+      <div class="ctrl-row" style="margin-bottom:.5rem">
+        <label for="srInput">Sample rate (Hz)</label>
+        <input id="srInput" class="sb-input" type="number" min="0" step="any" placeholder="e.g. 250" style="width:90px;text-align:right"/>
+      </div>
+
+      <!-- Scale -->
+      <div class="ctrl-row">
+        <label>Zoom Y</label>
+        <div class="ctrl-right">
+          <button class="adj-btn" id="scaleDown">−</button>
+          <span class="adj-val" id="scaleVal">Auto</span>
+          <button class="adj-btn" id="scaleUp">+</button>
+        </div>
+      </div>
+
+      <!-- Points -->
+      <div class="ctrl-row">
+        <label>Zoom X</label>
+        <div class="ctrl-right">
+          <button class="adj-btn" id="pointsDown">−</button>
+          <span class="adj-val" id="pointsVal">1000</span>
+          <button class="adj-btn" id="pointsUp">+</button>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="pill-btn" id="autoBtn">Auto scale</button>
+        <button class="pill-btn" id="fitBtn">Fit all</button>
+        <button class="pill-btn" id="fftBtn">FFT</button>
+      </div>
+    </div>
+
+    <!-- Channels -->
+    <div class="sb-section">
+      <div class="sb-label">
+        Channels
+        <span style="display:flex;gap:.25rem">
+          <button class="pill-btn" id="selAllBtn" style="height:20px;font-size:10px;padding:0 .4rem">All</button>
+          <button class="pill-btn" id="selNoneBtn" style="height:20px;font-size:10px;padding:0 .4rem">None</button>
+        </span>
+      </div>
+      <div id="chList" class="ch-list">
+        <div style="font-size:12px;color:var(--faint);padding:.25rem 0">Load a CSV to see channels.</div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- Sidebar resize handle -->
+  <div class="resize-handle-v" id="sidebarHandle">
+    <div class="drag-dots">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+  </div>
+
+  <!-- WORKSPACE -->
+  <div class="workspace">
+
+    <!-- Plot header pills -->
+    <div class="plot-header">
+      <div class="info-pill"><span>Status</span> <strong id="pillStatus">No file</strong></div>
+      <div class="info-pill"><span>Range</span> <strong id="pillRange">-</strong></div>
+      <div class="info-pill"><span>Time</span> <strong id="pillTime">-</strong></div>
+    </div>
+
+    <!-- Main area: plot + FFT -->
+    <div class="main-area" id="mainArea">
+
+      <div class="plot-col">
+        <!-- Scrollable canvas wrapper -->
+        <div class="canvas-wrap" id="canvasWrap">
+          <div class="canvas-scroll" id="canvasScroll">
+            <canvas id="mainCanvas"></canvas>
+          </div>
+          <!-- Empty state -->
+          <div class="empty-state" id="emptyState">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
+            </svg>
+            <h3>No data loaded</h3>
+            <p>Upload a CSV file to start plotting</p>
+          </div>
+        </div>
+
+        <!-- Timeline slider -->
+        <div class="timeline">
+          <span class="timeline-label" id="tlStart">0</span>
+          <input type="range" id="scrollSlider" min="0" max="0" value="0"/>
+          <span class="timeline-label" style="text-align:right" id="tlEnd">0</span>
+        </div>
+      </div>
+
+      <!-- FFT resize handle (hidden when closed) -->
+      <div class="resize-handle-v" id="fftHandle" style="display:none">
+        <div class="drag-dots">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+      </div>
+
+      <!-- FFT panel -->
+      <div class="fft-col" id="fftCol">
+        <div class="fft-header">
+          <span class="fft-header-title" id="fftHeader">FFT: visible window</span>
+        </div>
+        <!-- FFT channel selector -->
+        <div class="fft-ch-bar" id="fftChBar">
+          <span style="font-size:10px;color:var(--faint);padding:.1rem 0">Open FFT to select channels</span>
+        </div>
+        <div class="fft-wrap">
+          <canvas id="fftCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SAMPLING RATE MODAL -->
+<div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <div>
+      <h2 id="modalTitle">Set Sampling Rate</h2>
+      <p>Enter the sampling rate for your CSV to display time on the x-axis. You can skip this and set it later in the sidebar.</p>
+    </div>
+    <div class="modal-input-row">
+      <label for="modalSrInput">Sampling rate (Hz)</label>
+      <input id="modalSrInput" class="modal-big-input" type="number" min="0" step="any" placeholder="e.g.  250"/>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-skip" id="modalSkip">Skip</button>
+      <button class="modal-select" id="modalSelect">Start Plotting →</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOUR SYSTEM -->
+<div class="tour-dim"     id="tourDim"></div>
+<div class="tour-highlight" id="tourHL"></div>
+<div class="tour-card"    id="tourCard" role="dialog" aria-modal="true" aria-label="Tour tip">
+  <div class="tour-top">
+    <div class="tour-badge" id="tourBadge">Step 1 of 9</div>
+    <div class="tour-step-dots" id="tourDots"></div>
+    <button class="tour-close" id="tourClose" aria-label="Close tour">✕</button>
+  </div>
+  <div class="tour-title-row">
+    <div class="tour-icon" id="tourIcon"></div>
+    <div class="tour-title" id="tourTitle"></div>
+  </div>
+  <div class="tour-body" id="tourBody"></div>
+  <div class="tour-actions">
+    <button class="tour-btn-skip" id="tourSkip">Skip tour</button>
+    <button class="tour-btn-prev" id="tourPrev">← Back</button>
+    <button class="tour-btn-next" id="tourNext">Next →</button>
+  </div>
+</div>
+
+<script>
+/* ── TOUR ENGINE ─────────────────────────────────────── */
+(function() {
+'use strict';
+
+const TOUR_SEEN_KEY = 'csvplotter_tour_seen';
+
+const steps = [
+  {
+    target: () => document.querySelector('.upload-btn'),
+    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+    title: 'Welcome to Chords CSV Plotter',
+    body: 'Start by uploading a CSV file. Enter a sampling rate when prompted, or skip it.',
+    arrow: 'top',
+    pad: 6,
+  },
+  {
+    target: () => document.querySelector('.sb-section:nth-child(2)'),
+    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>`,
+    title: 'Controls',
+    body: '<strong>Sample rate</strong> shows real timestamps. <strong>Zoom Y</strong> scales vertically. <strong>Zoom X</strong> changes how many samples are visible, or pinch on the plot.',
+    arrow: 'right',
+    pad: 4,
+  },
+  {
+    target: () => document.querySelector('.sb-section:last-child'),
+    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+    title: 'Channels',
+    body: 'Toggle channels on or off. Each gets its own color and autoscaled lane. Use <strong>All / None</strong> to select everything at once.',
+    arrow: 'right',
+    pad: 4,
+  },
+  {
+    target: () => document.querySelector('.timeline'),
+    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
+    title: 'Navigating the data',
+    body: 'Scroll through data using the slider, scroll wheel, or a 2-finger swipe on the plot.',
+    arrow: 'top',
+    pad: 4,
+  },
+  {
+    target: () => document.getElementById('fftBtn'),
+    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
+    title: 'FFT viewer',
+    body: 'Click <strong>FFT</strong> for a live frequency spectrum of the visible window. Pick channels using the pills at the top of the panel.',
+    arrow: 'top',
+    pad: 6,
+  },
+  {
+    target: () => document.getElementById('sidebarHandle'),
+    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/><polyline points="9 18 3 12 9 6"/><line x1="21" y1="12" x2="15" y2="12"/></svg>`,
+    title: 'Resize panels',
+    body: 'Drag this handle to resize the sidebar. The FFT panel edge is draggable too.',
+    arrow: 'right',
+    pad: 0,
+  },
+  {
+    target: null,
+    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
+    title: 'Shortcuts',
+    body: `<kbd>←</kbd> <kbd>→</kbd> scroll &nbsp;·&nbsp; <kbd>↑</kbd> <kbd>↓</kbd> Zoom Y<br><kbd>-</kbd> zoom out X &nbsp;·&nbsp; <kbd>+</kbd> zoom in X &nbsp;·&nbsp; pinch to zoom X<br><br>Press <strong>?</strong> anytime to replay this tour.`,
+    arrow: 'none',
+    pad: 0,
+  },
+];
+
+let cur = 0;
+let active = false;
+
+const tDim   = document.getElementById('tourDim');
+const tHL    = document.getElementById('tourHL');
+const tCard  = document.getElementById('tourCard');
+const tBadge = document.getElementById('tourBadge');
+const tDots  = document.getElementById('tourDots');
+const tIcon  = document.getElementById('tourIcon');
+const tTitle = document.getElementById('tourTitle');
+const tBody  = document.getElementById('tourBody');
+const tClose = document.getElementById('tourClose');
+const tSkip  = document.getElementById('tourSkip');
+const tPrev  = document.getElementById('tourPrev');
+const tNext  = document.getElementById('tourNext');
+const helpBtn = document.getElementById('helpBtn');
+
+// Build dots
+function buildDots() {
+  tDots.innerHTML = '';
+  steps.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'tour-dot' + (i === cur ? ' active' : '');
+    tDots.appendChild(d);
+  });
+}
+
+function getTargetRect(step) {
+  if (!step.target) return null;
+  const el = step.target();
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  const pad = step.pad || 0;
+  return {
+    top: r.top - pad,
+    left: r.left - pad,
+    width: r.width + pad * 2,
+    height: r.height + pad * 2,
+    bottom: r.bottom + pad,
+    right: r.right + pad,
+    cx: r.left + r.width / 2,
+    cy: r.top + r.height / 2,
+  };
+}
+
+const CARD_W = 300, CARD_H = 230, MARGIN = 16;
+
+function positionCard(rect, arrow) {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let top, left, arrowDir = arrow;
+
+  if (!rect || arrow === 'none') {
+    // Centered
+    top  = (vh - CARD_H) / 2;
+    left = (vw - CARD_W) / 2;
+    arrowDir = 'none';
+  } else {
+    const spaceRight  = vw - rect.right;
+    const spaceLeft   = rect.left;
+    const spaceBottom = vh - rect.bottom;
+    const spaceTop    = rect.top;
+
+    if (arrow === 'right' || (spaceRight >= CARD_W + MARGIN + 12)) {
+      // Place card to the right of element
+      left = rect.right + 12;
+      top  = Math.max(MARGIN, Math.min(vh - CARD_H - MARGIN, rect.cy - CARD_H / 2));
+      arrowDir = 'left';
+    } else if (spaceLeft >= CARD_W + MARGIN + 12) {
+      left = rect.left - CARD_W - 12;
+      top  = Math.max(MARGIN, Math.min(vh - CARD_H - MARGIN, rect.cy - CARD_H / 2));
+      arrowDir = 'right';
+    } else if (spaceBottom >= CARD_H + MARGIN + 12) {
+      top  = rect.bottom + 12;
+      left = Math.max(MARGIN, Math.min(vw - CARD_W - MARGIN, rect.cx - CARD_W / 2));
+      arrowDir = 'top';
+    } else {
+      top  = rect.top - CARD_H - 12;
+      left = Math.max(MARGIN, Math.min(vw - CARD_W - MARGIN, rect.cx - CARD_W / 2));
+      arrowDir = 'bottom';
+    }
+
+    // Clamp
+    top  = Math.max(MARGIN, Math.min(vh - CARD_H - MARGIN, top));
+    left = Math.max(MARGIN, Math.min(vw - CARD_W - MARGIN, left));
+  }
+
+  tCard.style.top  = top + 'px';
+  tCard.style.left = left + 'px';
+  tCard.setAttribute('data-arrow', arrowDir);
+}
+
+function showStep(idx) {
+  cur = Math.max(0, Math.min(steps.length - 1, idx));
+  const step = steps[cur];
+  const rect  = getTargetRect(step);
+  const isLast = cur === steps.length - 1;
+  const isFirst = cur === 0;
+
+  // Content
+  tBadge.textContent = `Step ${cur + 1} of ${steps.length}`;
+  tIcon.innerHTML    = step.icon;
+  tTitle.textContent = step.title;
+  tBody.innerHTML    = step.body;
+  tNext.textContent  = isLast ? '✓ Done' : 'Next →';
+  tPrev.style.display = isFirst ? 'none' : '';
+  buildDots();
+
+  // Spotlight
+  if (rect) {
+    tHL.style.top    = rect.top + 'px';
+    tHL.style.left   = rect.left + 'px';
+    tHL.style.width  = rect.width + 'px';
+    tHL.style.height = rect.height + 'px';
+    tHL.classList.add('visible');
+    tDim.classList.remove('visible');
+  } else {
+    tHL.classList.remove('visible');
+    tDim.classList.add('visible');
+  }
+
+  // Card position (slight delay to allow HL transition to start)
+  positionCard(rect, step.arrow);
+
+  if (!tCard.classList.contains('visible')) {
+    tCard.classList.add('visible');
+  }
+}
+
+function startTour() {
+  active = true;
+  cur = 0;
+  showStep(0);
+}
+
+function endTour() {
+  active = false;
+  tHL.classList.remove('visible');
+  tDim.classList.remove('visible');
+  tCard.classList.remove('visible');
+  localStorage.setItem(TOUR_SEEN_KEY, '1');
+}
+
+tNext.addEventListener('click', () => {
+  if (cur >= steps.length - 1) { endTour(); return; }
+  showStep(cur + 1);
+});
+tPrev.addEventListener('click',  () => showStep(cur - 1));
+tClose.addEventListener('click', endTour);
+tSkip.addEventListener('click',  endTour);
+helpBtn.addEventListener('click', startTour);
+
+// Keyboard nav during tour
+document.addEventListener('keydown', e => {
+  if (!active) return;
+  if (e.key === 'Escape')     { endTour(); e.stopPropagation(); }
+  if (e.key === 'ArrowRight') { if (cur < steps.length - 1) showStep(cur + 1); e.stopPropagation(); }
+  if (e.key === 'ArrowLeft')  { if (cur > 0) showStep(cur - 1); e.stopPropagation(); }
+}, true);
+
+// Reposition on resize
+window.addEventListener('resize', () => {
+  if (!active) return;
+  const rect = getTargetRect(steps[cur]);
+  if (rect) {
+    tHL.style.top    = rect.top + 'px';
+    tHL.style.left   = rect.left + 'px';
+    tHL.style.width  = rect.width + 'px';
+    tHL.style.height = rect.height + 'px';
+  }
+  positionCard(rect, steps[cur].arrow);
+}, { passive: true });
+
+// Auto-start if first visit
+if (!localStorage.getItem(TOUR_SEEN_KEY)) {
+  // Small delay so layout is settled
+  setTimeout(startTour, 600);
+}
+
+})();
+</script>
+
+<script>
+(() => {
+'use strict';
+
+/* ── TRACK COLORS ─────────────────────────────────── */
+const TRACKS = ['--c1','--c2','--c3','--c4','--c5','--c6','--c7','--c8'];
+function trackColor(i) {
+  return getComputedStyle(document.documentElement).getPropertyValue(TRACKS[i % TRACKS.length]).trim();
+}
+
+/* ── STATE ────────────────────────────────────────── */
+const S = {
+  headers: [], numericIdx: [], rows: [], selected: new Set(),
+  fftChannels: new Set(),
+  channelRanges: {},
+  sampleRate: null, start: 0, window: 1000, scale: 1, fftOpen: false, fileName: '',
+};
+
+/* ── ELEMENT CACHE ────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const el = {
+  csvInput: $('csvInput'), themeBtn: $('themeBtn'),
+  statRows: $('statRows'), statCols: $('statCols'), statWindow: $('statWindow'), statRate: $('statRate'),
+  srInput: $('srInput'), scaleDown: $('scaleDown'), scaleUp: $('scaleUp'), scaleVal: $('scaleVal'),
+  pointsDown: $('pointsDown'), pointsUp: $('pointsUp'), pointsVal: $('pointsVal'),
+  autoBtn: $('autoBtn'), fitBtn: $('fitBtn'), fftBtn: $('fftBtn'),
+  selAllBtn: $('selAllBtn'), selNoneBtn: $('selNoneBtn'), chList: $('chList'),
+  pillStatus: $('pillStatus'), pillRange: $('pillRange'), pillTime: $('pillTime'),
+  canvasWrap: $('canvasWrap'), canvasScroll: $('canvasScroll'),
+  mainCanvas: $('mainCanvas'), emptyState: $('emptyState'),
+  scrollSlider: $('scrollSlider'), tlStart: $('tlStart'), tlEnd: $('tlEnd'),
+  fftCol: $('fftCol'), fftHeader: $('fftHeader'), fftCanvas: $('fftCanvas'),
+  fftChBar: $('fftChBar'), fftHandle: $('fftHandle'),
+  sidebar: $('sidebar'), sidebarHandle: $('sidebarHandle'),
+  mainArea: $('mainArea'),
+  modalBackdrop: $('modalBackdrop'), modalSrInput: $('modalSrInput'),
+  modalSkip: $('modalSkip'), modalSelect: $('modalSelect'),
+};
+const mainCtx = el.mainCanvas.getContext('2d');
+const fftCtx  = el.fftCanvas.getContext('2d');
+
+/* ── HELPERS ─────────────────────────────────────── */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const fmt   = (v, d=3) => Number.isFinite(v) ? v.toFixed(d) : '-';
+const fmtN  = v => Number.isFinite(v) ? Math.round(v).toLocaleString() : '0';
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+/* ── CHANNEL RANGES ──────────────────────────────── */
+function computeChannelRanges() {
+  S.channelRanges = {};
+  for (const ci of S.numericIdx) {
+    let lo = Infinity, hi = -Infinity;
+    for (let r = 0; r < S.rows.length; r++) {
+      const v = S.rows[r][ci];
+      if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    }
+    if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo = -1; hi = 1; }
+    S.channelRanges[ci] = { lo, hi };
+  }
+}
+
+/* ── THEME ───────────────────────────────────────── */
+function setThemeIcon() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  el.themeBtn.innerHTML = dark
+    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
+    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`;
+}
+el.themeBtn.addEventListener('click', () => {
+  const d = document.documentElement;
+  d.dataset.theme = d.dataset.theme === 'dark' ? 'light' : 'dark';
+  setThemeIcon(); buildChannelList(); renderAll();
+});
+setThemeIcon();
+
+/* ── CSV PARSING ─────────────────────────────────── */
+function parseCSV(text) {
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) throw new Error('Empty file.');
+  function splitLine(l) {
+    const out = []; let cur = '', q = false;
+    for (let i = 0; i < l.length; i++) {
+      const c = l[i];
+      if (c === '"') { if (q && l[i+1] === '"') { cur += '"'; i++; } else q = !q; }
+      else if (c === ',' && !q) { out.push(cur); cur = ''; }
+      else cur += c;
+    }
+    out.push(cur); return out;
+  }
+  const headers = splitLine(lines[0]).map((h, i) => h.trim() || `Col${i+1}`);
+  const sample  = lines.slice(1, 121).map(splitLine);
+  const numericIdx = headers.map((_, i) => i).filter(i => {
+    let tot = 0, num = 0;
+    for (const r of sample) { const v = (r[i]||'').trim(); if (!v) continue; tot++; if (isFinite(Number(v))) num++; }
+    return tot === 0 ? true : num / tot >= 0.8;
+  });
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitLine(lines[i]);
+    rows.push(headers.map((_, j) => { const n = Number((cells[j]||'').trim()); return isFinite(n) ? n : NaN; }));
+  }
+  return { headers, numericIdx, rows };
+}
+
+/* ── LOAD FILE ───────────────────────────────────── */
+let pendingParsed = null;
+
+async function handleFile(file) {
+  let parsed;
+  try { parsed = parseCSV(await file.text()); }
+  catch(e) { alert(e.message || 'Could not parse CSV.'); return; }
+  pendingParsed = parsed;
+  S.fileName = file.name;
+  el.modalSrInput.value = '';
+  el.modalBackdrop.classList.add('visible');
+  setTimeout(() => el.modalSrInput.focus(), 60);
+}
+
+function commitLoad(sr) {
+  const { headers, numericIdx, rows } = pendingParsed;
+  pendingParsed = null;
+  S.headers = headers; S.numericIdx = numericIdx; S.rows = rows;
+  S.sampleRate = (sr > 0) ? sr : null;
+  S.start = 0; S.window = clamp(1000, 32, rows.length || 1000); S.scale = 1;
+  S.selected.clear();
+  S.fftChannels.clear();
+  const preferred = numericIdx.filter(i => /ch|lead|bio|adc|signal/i.test(headers[i]));
+  (preferred.length ? preferred : numericIdx).slice(0, 8).forEach(i => {
+    S.selected.add(i);
+    S.fftChannels.add(i);
+  });
+  buildChannelList(); computeChannelRanges(); renderAll();
+  el.srInput.value = S.sampleRate || '';
+  el.emptyState.style.display = 'none';
+}
+
+el.modalSkip.addEventListener('click', () => {
+  el.modalBackdrop.classList.remove('visible');
+  commitLoad(null);
+});
+el.modalSelect.addEventListener('click', () => {
+  el.modalBackdrop.classList.remove('visible');
+  const sr = parseFloat(el.modalSrInput.value);
+  commitLoad(sr > 0 ? sr : null);
+});
+el.modalSrInput.addEventListener('keydown', e => { if (e.key === 'Enter') el.modalSelect.click(); });
+el.modalBackdrop.addEventListener('click', e => {
+  if (e.target === el.modalBackdrop) { el.modalBackdrop.classList.remove('visible'); commitLoad(null); }
+});
+
+el.csvInput.addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  if (f) handleFile(f);
+  e.target.value = '';
+});
+
+/* ── CHANNEL LIST ────────────────────────────────── */
+function buildChannelList() {
+  el.chList.innerHTML = '';
+  if (!S.numericIdx.length) {
+    el.chList.innerHTML = '<div style="font-size:12px;color:var(--faint);padding:.25rem 0">No numeric columns found.</div>';
+    buildFftChannelList();
+    return;
+  }
+  S.numericIdx.forEach((ci, idx) => {
+    const item = document.createElement('label');
+    item.className = 'ch-item' + (S.selected.has(ci) ? ' checked' : '');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.className = 'ch-cb'; cb.checked = S.selected.has(ci);
+    cb.addEventListener('change', () => {
+      if (cb.checked) S.selected.add(ci); else S.selected.delete(ci);
+      item.className = 'ch-item' + (S.selected.has(ci) ? ' checked' : '');
+      buildFftChannelList();
+      renderAll();
+    });
+    const dot = document.createElement('span');
+    dot.className = 'ch-dot';
+    dot.style.background = trackColor(idx);
+    const name = document.createElement('span');
+    name.className = 'ch-name'; name.textContent = S.headers[ci];
+    item.append(cb, dot, name);
+    el.chList.appendChild(item);
+  });
+  buildFftChannelList();
+}
+
+/* ── FFT CHANNEL SELECTOR ─────────────────────────── */
+function buildFftChannelList() {
+  el.fftChBar.innerHTML = '';
+  const visibleChannels = S.numericIdx
+    .map((ci, idx) => ({ ci, idx }))
+    .filter(({ ci }) => S.selected.has(ci));
+
+  if (!visibleChannels.length) {
+    el.fftChBar.innerHTML = '<span style="font-size:10px;color:var(--faint);padding:.1rem 0">No channels selected</span>';
+    return;
+  }
+
+  // "All" toggle button
+  const allBtn = document.createElement('button');
+  allBtn.className = 'fft-all-btn';
+  allBtn.textContent = 'All';
+  allBtn.addEventListener('click', () => {
+    const allActive = visibleChannels.every(({ ci }) => S.fftChannels.has(ci));
+    if (allActive) {
+      S.fftChannels.clear();
+    } else {
+      visibleChannels.forEach(({ ci }) => S.fftChannels.add(ci));
+    }
+    buildFftChannelList();
+    renderAll();
+  });
+  el.fftChBar.appendChild(allBtn);
+
+  visibleChannels.forEach(({ ci, idx }) => {
+    const color = trackColor(idx);
+    const pill = document.createElement('button');
+    pill.className = 'fft-ch-pill' + (S.fftChannels.has(ci) ? ' active' : '');
+    pill.style.setProperty('--pill-color', color);
+
+    const dot = document.createElement('span');
+    dot.className = 'fft-ch-dot';
+    dot.style.background = color;
+
+    const label = document.createElement('span');
+    label.textContent = S.headers[ci];
+    label.style.overflow = 'hidden';
+    label.style.textOverflow = 'ellipsis';
+
+    pill.append(dot, label);
+    pill.title = S.headers[ci];
+    pill.addEventListener('click', () => {
+      if (S.fftChannels.has(ci)) S.fftChannels.delete(ci);
+      else S.fftChannels.add(ci);
+      pill.classList.toggle('active', S.fftChannels.has(ci));
+      renderAll();
+    });
+    el.fftChBar.appendChild(pill);
+  });
+}
+
+el.selAllBtn.addEventListener('click', () => {
+  S.numericIdx.forEach(i => S.selected.add(i));
+  buildChannelList(); renderAll();
+});
+el.selNoneBtn.addEventListener('click', () => {
+  S.selected.clear(); buildChannelList(); renderAll();
+});
+
+/* ── CONTROLS ─────────────────────────────────────── */
+el.srInput.addEventListener('input', () => {
+  const n = parseFloat(el.srInput.value);
+  S.sampleRate = n > 0 ? n : null;
+  updateStats(); renderAll();
+});
+el.scaleDown.addEventListener('click', () => { S.scale = clamp(S.scale * 1.33, 0.05, 200); renderAll(); });
+el.scaleUp.addEventListener('click',   () => { S.scale = clamp(S.scale / 1.33, 0.05, 200); renderAll(); });
+el.pointsDown.addEventListener('click',() => { S.window = clamp(Math.round(S.window * 1.33), 32, Math.max(32, S.rows.length)); renderAll(); });
+el.pointsUp.addEventListener('click',  () => { S.window = clamp(Math.round(S.window * 0.75), 32, Math.max(32, S.rows.length)); renderAll(); });
+el.autoBtn.addEventListener('click',   () => { S.scale = 1; computeChannelRanges(); renderAll(); });
+el.fitBtn.addEventListener('click',    () => { S.window = Math.max(32, S.rows.length); S.start = 0; renderAll(); });
+el.fftBtn.addEventListener('click',    () => {
+  S.fftOpen = !S.fftOpen;
+  el.fftCol.classList.toggle('open', S.fftOpen);
+  el.fftHandle.style.display = S.fftOpen ? '' : 'none';
+  el.fftBtn.classList.toggle('active', S.fftOpen);
+  setTimeout(renderAll, 50);
+});
+el.scrollSlider.addEventListener('input', () => { S.start = Number(el.scrollSlider.value); renderAll(); });
+
+/* ── WHEEL / TRACKPAD SCROLL ─────────────────────── */
+el.canvasWrap.addEventListener('wheel', e => {
+  if (!S.rows.length) return;
+
+  // Pinch zoom on trackpad (Ctrl+wheel) → Zoom X, centered on current view
+  if (e.ctrlKey) {
+    e.preventDefault();
+    const oldW = S.window;
+    const factor = Math.pow(1.003, e.deltaY);
+    S.window = clamp(Math.round(oldW * factor), 32, Math.max(32, S.rows.length));
+    const center = S.start + oldW / 2;
+    S.start = clamp(Math.round(center - S.window / 2), 0, Math.max(0, S.rows.length - S.window));
+    renderAll();
+    return;
+  }
+
+  const canScrollV = el.canvasScroll.scrollHeight > el.canvasScroll.clientHeight + 2;
+  const isHorizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+  const wrapW = el.canvasWrap.getBoundingClientRect().width || 600;
+
+  if (isHorizontal) {
+    e.preventDefault();
+    const step = Math.max(1, Math.round(Math.abs(e.deltaX) * S.window / wrapW));
+    S.start = clamp(S.start + (e.deltaX > 0 ? step : -step), 0, Math.max(0, S.rows.length - S.window));
+    renderAll();
+    return;
+  }
+
+  // Vertical: if canvas is taller than wrapper, let native scroll handle it
+  if (canScrollV) return;
+
+  e.preventDefault();
+  const step = Math.max(1, Math.round(Math.abs(e.deltaY) * S.window / wrapW));
+  S.start = clamp(S.start + (e.deltaY > 0 ? step : -step), 0, Math.max(0, S.rows.length - S.window));
+  renderAll();
+}, { passive: false });
+
+/* ── KEYBOARD ─────────────────────────────────────── */
+window.addEventListener('keydown', e => {
+  if (e.target.matches('input,textarea,select')) return;
+  const W = Math.max(1, Math.floor(S.window * 0.1));
+  if (e.key === 'ArrowLeft')  { S.start = Math.max(0, S.start - W); renderAll(); e.preventDefault(); }
+  if (e.key === 'ArrowRight') { S.start = Math.min(Math.max(0, S.rows.length - S.window), S.start + W); renderAll(); e.preventDefault(); }
+  if (e.key === 'ArrowUp')   { S.scale = clamp(S.scale / 1.33, 0.05, 200); renderAll(); e.preventDefault(); }
+  if (e.key === 'ArrowDown') { S.scale = clamp(S.scale * 1.33, 0.05, 200); renderAll(); e.preventDefault(); }
+  if (e.key === '-') { S.window = clamp(Math.round(S.window * 1.33), 32, Math.max(32, S.rows.length)); renderAll(); }
+  if (e.key === '=' || e.key === '+') { S.window = clamp(Math.round(S.window * 0.75), 32, Math.max(32, S.rows.length)); renderAll(); }
+});
+
+/* ── RESIZE HANDLES ──────────────────────────────── */
+function initResize(handle, getEl, getSize, setSize, minPx, getMaxPx) {
+  let dragging = false, startX = 0, startSz = 0;
+  handle.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startSz = getSize();
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const newSz = clamp(startSz + dx, minPx, getMaxPx());
+    setSize(newSz);
+    renderAll();
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+  // Touch support
+  handle.addEventListener('touchstart', e => {
+    dragging = true;
+    startX = e.touches[0].clientX;
+    startSz = getSize();
+    handle.classList.add('dragging');
+    e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const dx = e.touches[0].clientX - startX;
+    const newSz = clamp(startSz + dx, minPx, getMaxPx());
+    setSize(newSz);
+    renderAll();
+  }, { passive: true });
+  document.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+  });
+}
+
+// Sidebar resize
+initResize(
+  el.sidebarHandle,
+  () => el.sidebar,
+  () => el.sidebar.getBoundingClientRect().width,
+  w  => { el.sidebar.style.width = w + 'px'; },
+  180,
+  () => Math.min(400, window.innerWidth * 0.4)
+);
+
+// FFT panel resize — handle sits on the LEFT of the panel, so drag direction is inverted.
+// Handled entirely here (mouse + touch) so both use the same inversion logic.
+(function initFftResize() {
+  let dragging = false, startX = 0, startW = 0;
+
+  function fftMaxW() {
+    const maW = el.mainArea.getBoundingClientRect().width;
+    return Math.min(maW * 0.55, maW - 220);
+  }
+  function applyDx(clientX) {
+    const dx = startX - clientX; // invert: drag left = wider FFT
+    el.fftCol.style.width = clamp(startW + dx, 180, fftMaxW()) + 'px';
+    renderAll();
+  }
+
+  el.fftHandle.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startW = el.fftCol.getBoundingClientRect().width;
+    el.fftHandle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  el.fftHandle.addEventListener('touchstart', e => {
+    dragging = true;
+    startX = e.touches[0].clientX;
+    startW = el.fftCol.getBoundingClientRect().width;
+    el.fftHandle.classList.add('dragging');
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('mousemove', e => { if (dragging) applyDx(e.clientX); });
+  document.addEventListener('touchmove', e => { if (dragging) applyDx(e.touches[0].clientX); }, { passive: true });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    el.fftHandle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+  document.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    el.fftHandle.classList.remove('dragging');
+  });
+})();
+
+/* ── STATS ───────────────────────────────────────── */
+function updateStats() {
+  el.statRows.textContent = fmtN(S.rows.length);
+  el.statCols.textContent = fmtN(S.numericIdx.length);
+  el.statWindow.textContent = fmtN(Math.min(S.window, S.rows.length));
+  el.statRate.textContent = S.sampleRate ? S.sampleRate + ' Hz' : '-';
+  el.scaleVal.textContent = S.scale === 1 ? 'Auto' : S.scale.toFixed(2) + 'x';
+  el.pointsVal.textContent = fmtN(S.window);
+}
+
+function updateSlider() {
+  const maxStart = Math.max(0, S.rows.length - S.window);
+  S.start = clamp(S.start, 0, maxStart);
+  el.scrollSlider.max = String(maxStart);
+  el.scrollSlider.value = String(S.start);
+  el.tlStart.textContent = S.sampleRate ? fmt(S.start / S.sampleRate, 2) + 's' : fmtN(S.start);
+  el.tlEnd.textContent   = S.sampleRate ? fmt((S.rows.length - 1) / S.sampleRate, 2) + 's' : fmtN(S.rows.length - 1);
+  const end = Math.min(S.rows.length - 1, S.start + S.window - 1);
+  el.pillRange.textContent = `${fmtN(S.start)} - ${fmtN(end)}`;
+  if (S.sampleRate && S.rows.length) {
+    el.pillTime.textContent = `${fmt(S.start / S.sampleRate, 3)}s - ${fmt(end / S.sampleRate, 3)}s`;
+  } else el.pillTime.textContent = '-';
+  el.pillStatus.textContent = S.rows.length ? (S.fileName || 'Loaded') : 'No file';
+}
+
+/* ── CANVAS SIZING ───────────────────────────────── */
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+function sizeCanvas(canvas, w, h) {
+  const pw = Math.max(10, Math.round(w * DPR));
+  const ph = Math.max(10, Math.round(h * DPR));
+  if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  return { w, h };
+}
+
+/* ── CURRENT WINDOW DATA ──────────────────────────── */
+function windowRows() {
+  return S.rows.slice(S.start, S.start + S.window);
+}
+function visibleSeries(rows) {
+  return S.numericIdx
+    .map((ci, idx) => ({ ci, idx, name: S.headers[ci], color: trackColor(idx) }))
+    .filter(s => S.selected.has(s.ci))
+    .map(s => {
+      const vals = new Float64Array(rows.length);
+      for (let r = 0; r < rows.length; r++) vals[r] = rows[r][s.ci];
+      return { ...s, vals };
+    });
+}
+
+/* ── MAIN PLOT RENDERING ──────────────────────────── */
+const MARGIN = { top: 12, right: 14, bottom: 32, left: 62 };
+const MIN_BAND = 80;
+const PREF_BAND = 130;
+
+function drawMain() {
+  const N = S.numericIdx.filter(i => S.selected.has(i)).length;
+  const rows = windowRows();
+
+  const wrapH = el.canvasWrap.getBoundingClientRect().height || 400;
+  const wrapW = el.canvasWrap.getBoundingClientRect().width  || 600;
+  const naturalH = N <= 1 ? wrapH : Math.max(wrapH, N * PREF_BAND + MARGIN.top + MARGIN.bottom);
+  const useScroll = naturalH > wrapH + 10;
+
+  el.canvasScroll.style.overflowY = useScroll ? 'auto' : 'hidden';
+  el.canvasScroll.style.height    = '100%';
+  el.mainCanvas.style.height      = useScroll ? naturalH + 'px' : '100%';
+
+  const canvasW = wrapW;
+  const canvasH = useScroll ? naturalH : wrapH;
+
+  sizeCanvas(el.mainCanvas, canvasW, canvasH);
+  mainCtx.clearRect(0, 0, canvasW, canvasH);
+
+  mainCtx.fillStyle = cssVar('--surf');
+  mainCtx.fillRect(0, 0, canvasW, canvasH);
+
+  const plotW = Math.max(10, canvasW - MARGIN.left - MARGIN.right);
+  const plotH = Math.max(10, canvasH - MARGIN.top  - MARGIN.bottom);
+
+  if (!rows.length || !N) {
+    el.emptyState.style.display = S.rows.length ? 'none' : 'flex';
+    drawTimeAxis(mainCtx, canvasW, canvasH, plotW, plotH, rows.length);
+    return;
+  }
+  el.emptyState.style.display = 'none';
+
+  const series = visibleSeries(rows);
+  const bandH  = plotH / Math.max(1, series.length);
+
+  const gridColor = cssVar('--grid');
+  mainCtx.save();
+  mainCtx.strokeStyle = gridColor;
+  mainCtx.lineWidth = 1;
+  for (let i = 0; i <= 8; i++) {
+    const x = MARGIN.left + (i / 8) * plotW;
+    mainCtx.beginPath(); mainCtx.moveTo(x, MARGIN.top); mainCtx.lineTo(x, MARGIN.top + plotH); mainCtx.stroke();
+  }
+  mainCtx.restore();
+
+  const step = Math.max(1, Math.ceil(rows.length / (plotW * 2)));
+
+  series.forEach((s, si) => {
+    const bandTop  = MARGIN.top + si * bandH;
+    const innerTop = bandTop + 6;
+    const innerH   = Math.max(12, bandH - 12);
+
+    const range = S.channelRanges[s.ci] || { lo: -1, hi: 1 };
+    const { lo, hi } = range;
+    const center    = (lo + hi) / 2;
+    const halfRange = Math.max((hi - lo) / 2, 1e-12) * S.scale * 1.1;
+    const yMin = center - halfRange;
+    const yMax = center + halfRange;
+
+    if (si > 0) {
+      mainCtx.save();
+      mainCtx.strokeStyle = cssVar('--divider');
+      mainCtx.lineWidth = 1;
+      mainCtx.beginPath(); mainCtx.moveTo(MARGIN.left, bandTop); mainCtx.lineTo(MARGIN.left + plotW, bandTop); mainCtx.stroke();
+      mainCtx.restore();
+    }
+
+    mainCtx.save();
+    mainCtx.fillStyle = s.color;
+    mainCtx.font = `600 11px ${cssVar('--font')}`;
+    mainCtx.fillText(s.name, MARGIN.left + 6, bandTop + 16);
+    mainCtx.restore();
+
+    mainCtx.save();
+    mainCtx.fillStyle = cssVar('--muted');
+    mainCtx.font = `10px ${cssVar('--mono')}`;
+    mainCtx.textAlign = 'right';
+    mainCtx.fillText(fmt(hi, 3),     MARGIN.left - 4, innerTop + 8);
+    mainCtx.fillText(fmt(center, 3), MARGIN.left - 4, innerTop + innerH / 2 + 4);
+    mainCtx.fillText(fmt(lo, 3),     MARGIN.left - 4, innerTop + innerH);
+    mainCtx.restore();
+
+    mainCtx.save();
+    mainCtx.beginPath();
+    mainCtx.rect(MARGIN.left, innerTop - 4, plotW, innerH + 8);
+    mainCtx.clip();
+
+    mainCtx.strokeStyle = s.color;
+    mainCtx.lineWidth   = 1.6;
+    mainCtx.lineJoin    = 'round';
+    mainCtx.lineCap     = 'round';
+    mainCtx.beginPath();
+    let started = false;
+    for (let i = 0; i < s.vals.length; i += step) {
+      const v = s.vals[i];
+      if (!isFinite(v)) { started = false; continue; }
+      const x = MARGIN.left + (i / Math.max(1, s.vals.length - 1)) * plotW;
+      const y = innerTop + (1 - (v - yMin) / Math.max(1e-12, yMax - yMin)) * innerH;
+      if (!started) { mainCtx.moveTo(x, y); started = true; } else mainCtx.lineTo(x, y);
+    }
+    mainCtx.stroke();
+    mainCtx.restore();
+  });
+
+  mainCtx.save();
+  mainCtx.strokeStyle = cssVar('--axis-line');
+  mainCtx.lineWidth = 1;
+  mainCtx.beginPath();
+  mainCtx.moveTo(MARGIN.left, MARGIN.top);
+  mainCtx.lineTo(MARGIN.left, MARGIN.top + plotH);
+  mainCtx.lineTo(MARGIN.left + plotW, MARGIN.top + plotH);
+  mainCtx.stroke();
+  mainCtx.restore();
+
+  drawTimeAxis(mainCtx, canvasW, canvasH, plotW, plotH, rows.length);
+}
+
+function drawTimeAxis(ctx, cw, ch, plotW, plotH, rowCount) {
+  ctx.save();
+  ctx.fillStyle = cssVar('--muted');
+  ctx.font = `10px ${cssVar('--mono')}`;
+  ctx.textAlign = 'center';
+  for (let i = 0; i <= 8; i++) {
+    const x = MARGIN.left + (i / 8) * plotW;
+    const sIdx = S.start + Math.round((i / 8) * Math.max(0, rowCount - 1));
+    const label = S.sampleRate ? fmt(sIdx / S.sampleRate, 2) + 's' : String(sIdx);
+    ctx.fillText(label, x, ch - 8);
+  }
+  ctx.restore();
+}
+
+/* ── FFT ──────────────────────────────────────────── */
+function nextPow2(n) { let p = 1; while (p < n) p <<= 1; return p; }
+function fftIP(re, im) {
+  const n = re.length; let j = 0;
+  for (let i = 0; i < n; i++) {
+    if (i < j) { [re[i],re[j]] = [re[j],re[i]]; [im[i],im[j]] = [im[j],im[i]]; }
+    let m = n >> 1;
+    while (j >= m && m >= 2) { j -= m; m >>= 1; }
+    j += m;
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len, wc = Math.cos(ang), ws = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let rc = 1, rs = 0;
+      for (let k = 0; k < len >> 1; k++) {
+        const ur = re[i+k], ui = im[i+k];
+        const vr = re[i+k+(len>>1)]*rc - im[i+k+(len>>1)]*rs;
+        const vi = re[i+k+(len>>1)]*rs + im[i+k+(len>>1)]*rc;
+        re[i+k] = ur+vr; im[i+k] = ui+vi;
+        re[i+k+(len>>1)] = ur-vr; im[i+k+(len>>1)] = ui-vi;
+        const nc = rc*wc - rs*ws; rs = rc*ws + rs*wc; rc = nc;
+      }
+    }
+  }
+}
+function fftMags(signal) {
+  const n0 = signal.length, n = nextPow2(Math.max(8, n0));
+  const re = new Float64Array(n), im = new Float64Array(n);
+  let mean = 0; for (let i = 0; i < n0; i++) mean += signal[i]; mean /= n0 || 1;
+  for (let i = 0; i < n0; i++) re[i] = signal[i] - mean;
+  fftIP(re, im);
+  const half = n >> 1, mags = new Float64Array(half);
+  for (let i = 0; i < half; i++) mags[i] = Math.hypot(re[i], im[i]) / n0;
+  return { mags, n };
+}
+
+function drawFFT() {
+  if (!S.fftOpen) return;
+  const rect = el.fftCanvas.getBoundingClientRect();
+  const W = rect.width || 260, H = rect.height || 360;
+  sizeCanvas(el.fftCanvas, W, H);
+  fftCtx.clearRect(0, 0, W, H);
+  fftCtx.fillStyle = cssVar('--surf');
+  fftCtx.fillRect(0, 0, W, H);
+
+  const M = { top: 14, right: 10, bottom: 30, left: 48 };
+  const pW = Math.max(10, W - M.left - M.right);
+  const pH = Math.max(10, H - M.top - M.bottom);
+
+  // Build series from fftChannels (independent from selected)
+  const rows = windowRows();
+  const sr = S.sampleRate || 1;
+  // Cap FFT display at 150 Hz (or nyquist if lower)
+  const nyquist = sr / 2;
+  const maxFreq = S.sampleRate ? Math.min(nyquist, 150) : nyquist;
+
+  const fftSeries = S.numericIdx
+    .map((ci, idx) => ({ ci, idx, name: S.headers[ci], color: trackColor(idx) }))
+    .filter(s => S.fftChannels.has(s.ci))
+    .map(s => {
+      const vals = new Float64Array(rows.length);
+      for (let r = 0; r < rows.length; r++) vals[r] = rows[r][s.ci];
+      return { ...s, vals };
+    });
+
+  // Grid
+  fftCtx.save();
+  fftCtx.strokeStyle = cssVar('--grid');
+  fftCtx.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const y = M.top + (i / 5) * pH;
+    fftCtx.beginPath(); fftCtx.moveTo(M.left, y); fftCtx.lineTo(M.left + pW, y); fftCtx.stroke();
+  }
+  for (let i = 0; i <= 5; i++) {
+    const x = M.left + (i / 5) * pW;
+    fftCtx.beginPath(); fftCtx.moveTo(x, M.top); fftCtx.lineTo(x, M.top + pH); fftCtx.stroke();
+  }
+  fftCtx.restore();
+
+  if (!fftSeries.length) {
+    el.fftHeader.textContent = 'FFT: select channels above';
+    fftCtx.save();
+    fftCtx.fillStyle = cssVar('--faint');
+    fftCtx.font = `12px ${cssVar('--font')}`;
+    fftCtx.textAlign = 'center';
+    fftCtx.fillText('No channels', M.left + pW / 2, M.top + pH / 2 - 8);
+    fftCtx.fillText('selected above', M.left + pW / 2, M.top + pH / 2 + 10);
+    fftCtx.restore();
+    drawFFTAxes(fftCtx, M, pW, pH, W, H, maxFreq, 1);
+    return;
+  }
+
+  // Compute magnitudes, capped at maxFreq
+  let globalMax = 0;
+  const computed = fftSeries.slice(0, 8).map(s => {
+    const clean = Array.from(s.vals).map(v => isFinite(v) ? v : 0);
+    const { mags, n } = fftMags(clean);
+    // Only scan up to maxFreq for globalMax
+    const cutoff = S.sampleRate ? Math.min(mags.length, Math.ceil(maxFreq * n / sr) + 1) : mags.length;
+    for (let i = 1; i < cutoff; i++) { // skip DC (i=0)
+      if (mags[i] > globalMax) globalMax = mags[i];
+    }
+    return { ...s, mags, n, cutoff };
+  });
+  globalMax = globalMax || 1;
+
+  // Draw each channel line
+  fftCtx.save();
+  fftCtx.beginPath();
+  fftCtx.rect(M.left, M.top, pW, pH);
+  fftCtx.clip();
+
+  computed.forEach(s => {
+    fftCtx.beginPath();
+    fftCtx.strokeStyle = s.color;
+    fftCtx.lineWidth = 1.6;
+    let started = false;
+    for (let i = 1; i < s.cutoff; i++) { // skip DC
+      const f = i * sr / s.n;
+      if (f > maxFreq) break;
+      const x = M.left + (f / maxFreq) * pW;
+      const y = M.top + (1 - s.mags[i] / globalMax) * pH;
+      if (!started) { fftCtx.moveTo(x, y); started = true; }
+      else fftCtx.lineTo(x, y);
+    }
+    fftCtx.stroke();
+  });
+  fftCtx.restore();
+
+  // Legend (top-right, with colored lines)
+  const legendX = M.left + pW - 4;
+  let legendY = M.top + 6;
+  computed.forEach(s => {
+    fftCtx.save();
+    // Line swatch
+    fftCtx.strokeStyle = s.color;
+    fftCtx.lineWidth = 2;
+    fftCtx.beginPath();
+    fftCtx.moveTo(legendX - 26, legendY + 4);
+    fftCtx.lineTo(legendX - 6, legendY + 4);
+    fftCtx.stroke();
+    // Label
+    fftCtx.fillStyle = s.color;
+    fftCtx.font = `600 9px ${cssVar('--font')}`;
+    fftCtx.textAlign = 'right';
+    const label = s.name.length > 10 ? s.name.slice(0, 9) + '…' : s.name;
+    fftCtx.fillText(label, legendX - 30, legendY + 8);
+    fftCtx.restore();
+    legendY += 14;
+  });
+
+  drawFFTAxes(fftCtx, M, pW, pH, W, H, maxFreq, globalMax);
+
+  const capLabel = S.sampleRate ? `FFT 0-${Math.round(maxFreq)} Hz` : 'FFT: set sample rate for Hz';
+  el.fftHeader.textContent = capLabel;
+}
+
+function drawFFTAxes(ctx, M, pW, pH, W, H, maxFreq, globalMax) {
+  const sr = S.sampleRate || 1;
+  ctx.save();
+  ctx.strokeStyle = cssVar('--axis-line');
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(M.left, M.top); ctx.lineTo(M.left, M.top + pH); ctx.lineTo(M.left + pW, M.top + pH);
+  ctx.stroke();
+
+  ctx.fillStyle = cssVar('--muted');
+  ctx.font = `10px ${cssVar('--mono')}`;
+
+  // Y labels
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const y = M.top + (i / 4) * pH;
+    ctx.fillText(fmt(globalMax * (1 - i / 4), 3), M.left - 3, y + 4);
+  }
+
+  // X labels (freq)
+  ctx.textAlign = 'center';
+  const tickCount = Math.min(6, Math.floor(pW / 40));
+  for (let i = 0; i <= tickCount; i++) {
+    const x = M.left + (i / tickCount) * pW;
+    const freqVal = maxFreq * i / tickCount;
+    const label = S.sampleRate ? Math.round(freqVal) + 'Hz' : fmt(freqVal, 1);
+    ctx.fillText(label, x, H - 8);
+  }
+  ctx.restore();
+}
+
+/* ── MAIN RENDER LOOP ────────────────────────────── */
+let raf = 0;
+function renderAll() {
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(() => {
+    updateStats();
+    updateSlider();
+    drawMain();
+    drawFFT();
+  });
+}
+
+/* ── RESIZE OBSERVER ─────────────────────────────── */
+const ro = new ResizeObserver(renderAll);
+ro.observe(el.canvasWrap);
+ro.observe(el.fftCanvas.parentElement);
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 680) {
+    const maxSW = Math.min(400, window.innerWidth * 0.4);
+    const currSW = el.sidebar.getBoundingClientRect().width;
+    if (currSW > maxSW) el.sidebar.style.width = maxSW + 'px';
+    else if (currSW < 180) el.sidebar.style.width = '180px';
+  }
+  if (S.fftOpen) {
+    const maW = el.mainArea.getBoundingClientRect().width;
+    const maxFW = Math.min(maW * 0.55, maW - 220);
+    if (maxFW > 0) {
+      const currFW = el.fftCol.getBoundingClientRect().width;
+      if (currFW > maxFW) el.fftCol.style.width = maxFW + 'px';
+    }
+  }
+  renderAll();
+}, { passive: true });
+
+/* ── INIT ────────────────────────────────────────── */
+renderAll();
+
+})();
+</script>
+</body>
+</html>
