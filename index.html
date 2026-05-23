@@ -1256,23 +1256,22 @@ initResize(
   () => Math.min(400, window.innerWidth * 0.4)
 );
 
-// FFT panel resize (inverted: dragging left increases FFT width)
-initResize(
-  el.fftHandle,
-  () => el.fftCol,
-  () => el.fftCol.getBoundingClientRect().width,
-  w  => { el.fftCol.style.width = w + 'px'; },
-  180,
-  () => {
+// FFT panel resize — handle sits on the LEFT of the panel, so drag direction is inverted.
+// Handled entirely here (mouse + touch) so both use the same inversion logic.
+(function initFftResize() {
+  let dragging = false, startX = 0, startW = 0;
+
+  function fftMaxW() {
     const maW = el.mainArea.getBoundingClientRect().width;
     return Math.min(maW * 0.55, maW - 220);
   }
-);
-// FFT handle dragging inverts direction (handle is on left of fft panel)
-// We need to override: dragging left → bigger FFT. Patch the handler:
-(function patchFftHandle() {
-  let dragging = false, startX = 0, startW = 0;
-  el.fftHandle.onmousedown = e => {
+  function applyDx(clientX) {
+    const dx = startX - clientX; // invert: drag left = wider FFT
+    el.fftCol.style.width = clamp(startW + dx, 180, fftMaxW()) + 'px';
+    renderAll();
+  }
+
+  el.fftHandle.addEventListener('mousedown', e => {
     dragging = true;
     startX = e.clientX;
     startW = el.fftCol.getBoundingClientRect().width;
@@ -1280,23 +1279,29 @@ initResize(
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     e.preventDefault();
-    e.stopImmediatePropagation();
-  };
-  document.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    const dx = startX - e.clientX; // invert: left = bigger
-    const maW = el.mainArea.getBoundingClientRect().width;
-    const maxW = Math.min(maW * 0.55, maW - 220);
-    const newW = clamp(startW + dx, 180, maxW);
-    el.fftCol.style.width = newW + 'px';
-    renderAll();
   });
+  el.fftHandle.addEventListener('touchstart', e => {
+    dragging = true;
+    startX = e.touches[0].clientX;
+    startW = el.fftCol.getBoundingClientRect().width;
+    el.fftHandle.classList.add('dragging');
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('mousemove', e => { if (dragging) applyDx(e.clientX); });
+  document.addEventListener('touchmove', e => { if (dragging) applyDx(e.touches[0].clientX); }, { passive: true });
+
   document.addEventListener('mouseup', () => {
     if (!dragging) return;
     dragging = false;
     el.fftHandle.classList.remove('dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+  });
+  document.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    el.fftHandle.classList.remove('dragging');
   });
 })();
 
