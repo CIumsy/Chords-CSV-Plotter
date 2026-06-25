@@ -124,12 +124,19 @@ canvas{display:block}
 .tb-pill.active{background:var(--primary);color:#fff;border-color:transparent}
 /* File name badge */
 .file-badge{
+  display:flex;align-items:center;gap:.2rem;
   font-size:.625rem;font-family:var(--mono);color:var(--muted);
-  max-width:8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  flex-shrink:1;padding:.125rem .4rem;border-radius:var(--radius-sm);
+  max-width:9rem;overflow:hidden;flex-shrink:1;
+  padding:.125rem .2rem .125rem .4rem;border-radius:var(--radius-sm);
   background:var(--surf2);border:1px solid var(--border);
 }
-.file-badge:empty{display:none}
+.file-badge-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+.file-close-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:.875rem;height:.875rem;flex-shrink:0;font-size:.6875rem;line-height:1;
+  color:var(--muted);border-radius:2px;transition:background .1s,color .1s;
+}
+.file-close-btn:hover{background:var(--surf3);color:var(--text)}
 /* Right side of topbar */
 .topbar-right{display:flex;gap:.375rem;align-items:center;flex-shrink:0}
 .upload-btn{
@@ -154,20 +161,34 @@ canvas{display:block}
 .resize-handle-v{
   width:.375rem; flex-shrink:0; cursor:col-resize; background:transparent;
   position:relative; z-index:20; display:flex; align-items:center; justify-content:center;
+  overflow:visible;
 }
 .resize-handle-v::after{
   content:''; position:absolute; top:0; bottom:0; left:.125rem; right:.125rem;
   border-radius:.1875rem; background:transparent; transition:background .15s;
 }
 .resize-handle-v:hover::after,.resize-handle-v.dragging::after{
+  background:var(--primary);opacity:.35;
+}
+.drag-pill{
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:1.125rem; height:1.75rem; border-radius:.5rem;
+  background:var(--surf3); border:1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  pointer-events:none; z-index:2;
+  transition:background .15s, border-color .15s, box-shadow .15s;
+}
+.drag-pill span{
+  width:.4375rem; height:1.5px; border-radius:1px;
+  background:var(--muted); display:block; transition:background .15s;
+}
+.resize-handle-v:hover .drag-pill,.resize-handle-v.dragging .drag-pill{
+  border-color:var(--primary);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 18%,transparent);
+}
+.resize-handle-v:hover .drag-pill span,.resize-handle-v.dragging .drag-pill span{
   background:var(--primary);
 }
-.resize-handle-v .drag-dots{
-  position:relative;z-index:1;display:flex;flex-direction:column;gap:.1875rem;pointer-events:none;opacity:0;
-  transition:opacity .15s;
-}
-.resize-handle-v:hover .drag-dots,.resize-handle-v.dragging .drag-dots{opacity:1}
-.drag-dots span{width:2px;height:2px;border-radius:50%;background:var(--primary);display:block}
 
 /* ─── SIDEBAR (auto-hide channel panel) ──────────── */
 .sidebar{
@@ -521,7 +542,10 @@ canvas{display:block}
   </div>
 
   <div class="topbar-right">
-    <span class="file-badge" id="fileNameDisplay"></span>
+    <div class="file-badge" id="fileBadge" style="display:none">
+      <span class="file-badge-name" id="fileNameDisplay"></span>
+      <button class="file-close-btn" id="fileCloseBtn" title="Close file" aria-label="Close file">&#x2715;</button>
+    </div>
     <button class="upload-btn" type="button" onclick="document.getElementById('csvInput').click()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <span class="upload-text">Upload CSV</span>
@@ -581,8 +605,8 @@ canvas{display:block}
 
       <!-- FFT resize handle (hidden when closed) -->
       <div class="resize-handle-v" id="fftHandle" style="display:none">
-        <div class="drag-dots">
-          <span></span><span></span><span></span><span></span><span></span>
+        <div class="drag-pill">
+          <span></span><span></span><span></span>
         </div>
       </div>
 
@@ -692,14 +716,6 @@ const steps = [
     body: 'Click <strong>FFT</strong> for a live frequency spectrum of the visible window. Pick channels using the pills at the top of the panel.',
     arrow: 'top',
     pad: 6,
-  },
-  {
-    target: () => document.getElementById('fftHandle'),
-    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/><polyline points="9 18 3 12 9 6"/><line x1="21" y1="12" x2="15" y2="12"/></svg>`,
-    title: 'Resize FFT panel',
-    body: 'Drag the FFT panel edge to resize it. Open FFT first with the button in the topbar.',
-    arrow: 'right',
-    pad: 0,
   },
   {
     target: null,
@@ -924,7 +940,7 @@ const el = {
   zoomYSlider: $('zoomYSlider'), zoomYTxt: $('zoomYTxt'),
   zoomXSlider: $('zoomXSlider'), zoomXTxt: $('zoomXTxt'),
   autoBtn: $('autoBtn'), fitBtn: $('fitBtn'), fftBtn: $('fftBtn'),
-  fileNameDisplay: $('fileNameDisplay'),
+  fileNameDisplay: $('fileNameDisplay'), fileBadge: $('fileBadge'), fileCloseBtn: $('fileCloseBtn'),
   chList: $('chList'),
   canvasWrap: $('canvasWrap'), canvasScroll: $('canvasScroll'),
   mainCanvas: $('mainCanvas'), emptyState: $('emptyState'),
@@ -1049,6 +1065,8 @@ function commitLoad(sr) {
   buildChannelList(); computeChannelRanges(); renderAll();
   el.srInput.value = S.sampleRate || '';
   el.fileNameDisplay.textContent = S.fileName || '';
+  el.fileNameDisplay.title = S.fileName || '';
+  el.fileBadge.style.display = S.fileName ? 'flex' : 'none';
   el.emptyState.style.display = 'none';
 }
 
@@ -1175,6 +1193,18 @@ el.zoomXSlider.addEventListener('input', () => {
   renderAll();
 });
 
+el.fileCloseBtn.addEventListener('click', () => {
+  S.headers = []; S.numericIdx = []; S.rows = [];
+  S.selected = new Set(); S.fftChannels = new Set();
+  S.channelRanges = {}; S.sampleRate = null;
+  S.start = 0; S.window = 1000; S.scale = 1;
+  S.fftOpen = false; S.fileName = '';
+  el.srInput.value = '';
+  el.csvInput.value = '';
+  el.fileBadge.style.display = 'none';
+  el.fftCol.classList.remove('open');
+  buildChannelList(); renderAll();
+});
 el.autoBtn.addEventListener('click', () => { S.scale = 1; computeChannelRanges(); renderAll(); });
 el.fitBtn.addEventListener('click',  () => { S.window = Math.max(WIN_MIN, S.rows.length); S.start = 0; renderAll(); });
 el.fftBtn.addEventListener('click',    () => {
