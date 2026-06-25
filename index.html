@@ -64,9 +64,9 @@ canvas{display:block}
 
 /* ─── TOP BAR ────────────────────────────────────── */
 .topbar{
-  display:flex; align-items:center; gap:.75rem;
-  padding:.5rem 1rem; border-bottom:1px solid var(--border);
-  background:var(--surf); flex-shrink:0; min-height:3rem;
+  display:flex; align-items:center; gap:.5rem;
+  padding:.375rem .875rem; border-bottom:1px solid var(--border);
+  background:var(--surf); flex-shrink:0; min-height:2.875rem;
 }
 .logo{display:flex;align-items:center;gap:.5rem;font-size:.9375rem;font-weight:700;letter-spacing:-.02em;white-space:nowrap;flex-shrink:0}
 .logo-text{display:flex;align-items:baseline;gap:.3rem}
@@ -78,16 +78,66 @@ canvas{display:block}
   transition:all .3s;
 }
 .logo img{width:1.875rem;height:1.875rem;border-radius:.4375rem;flex-shrink:0}
-.topbar-actions{display:flex;gap:.5rem;align-items:center;margin-left:auto}
+
+/* Controls strip */
+.topbar-controls{display:flex;align-items:center;gap:.5rem;flex:1;justify-content:center;min-width:0}
+.tb-sep{width:1px;height:1.25rem;background:var(--divider);flex-shrink:0}
+.tb-sr-group{display:flex;align-items:center;gap:.375rem;flex-shrink:0}
+.tb-lbl{font-size:.5625rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.tb-input{
+  width:4.25rem;height:1.75rem;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surf2);padding:0 .375rem;font-size:.75rem;font-family:var(--mono);
+  text-align:right;outline:none;color:var(--text);
+}
+.tb-input:focus{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-soft)}
+/* Zoom sliders */
+.zoom-ctrl{display:flex;flex-direction:column;gap:.125rem;min-width:5.5rem;max-width:7rem;flex:1}
+.zoom-info{display:flex;align-items:baseline;justify-content:space-between;gap:.2rem}
+.zoom-lbl{font-size:.5rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.zoom-val{font-size:.5rem;font-family:var(--mono);color:var(--text);white-space:nowrap}
+.zoom-slider{
+  -webkit-appearance:none;appearance:none;width:100%;height:.3125rem;
+  border-radius:var(--radius-full);outline:none;cursor:pointer;border:none;
+}
+.zoom-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:.8125rem;height:.8125rem;border-radius:50%;
+  background:var(--primary);border:2px solid var(--surf);
+  box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .1s;cursor:grab;
+}
+.zoom-slider::-webkit-slider-thumb:hover{transform:scale(1.2)}
+.zoom-slider::-moz-range-thumb{
+  width:.8125rem;height:.8125rem;border-radius:50%;background:var(--primary);
+  border:2px solid var(--surf);cursor:grab;
+}
+/* Topbar action buttons */
+.tb-btn-group{display:flex;gap:.25rem;flex-shrink:0}
+.tb-pill{
+  height:1.75rem;padding:0 .625rem;border-radius:var(--radius-md);
+  font-size:.6875rem;font-weight:600;border:1px solid var(--border);
+  background:var(--surf2);transition:background .12s,transform .1s,color .12s;
+}
+.tb-pill:hover{background:var(--surf3);transform:translateY(-1px)}
+.tb-pill:active{transform:none}
+.tb-pill.active{background:var(--primary);color:#fff;border-color:transparent}
+/* File name badge */
+.file-badge{
+  font-size:.625rem;font-family:var(--mono);color:var(--muted);
+  max-width:8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  flex-shrink:1;padding:.125rem .4rem;border-radius:var(--radius-sm);
+  background:var(--surf2);border:1px solid var(--border);
+}
+.file-badge:empty{display:none}
+/* Right side of topbar */
+.topbar-right{display:flex;gap:.375rem;align-items:center;flex-shrink:0}
 .upload-btn{
-  display:inline-flex; align-items:center; gap:.4rem; height:2.125rem; padding:0 .875rem;
+  display:inline-flex; align-items:center; gap:.4rem; height:2rem; padding:0 .75rem;
   background:var(--primary); color:#fff; border-radius:var(--radius-md); font-size:.8125rem; font-weight:600;
   transition:background .15s ease, transform .12s ease;
 }
 .upload-btn:hover{background:var(--primary-h);transform:translateY(-1px)}
 .upload-btn:active{transform:none}
 .icon-btn{
-  width:2.125rem;height:2.125rem;display:inline-grid;place-items:center;
+  width:2rem;height:2rem;display:inline-grid;place-items:center;
   border-radius:var(--radius-md); border:1px solid var(--border); background:var(--surf2);
   transition:background .15s,transform .12s;
 }
@@ -95,7 +145,7 @@ canvas{display:block}
 .sr-only{position:absolute;width:1px;height:1px;clip:rect(0,0,0,0);overflow:hidden}
 
 /* ─── LAYOUT ─────────────────────────────────────── */
-.layout{display:flex;flex:1;min-height:0;overflow:hidden}
+.layout{display:flex;flex:1;min-height:0;overflow:hidden;position:relative}
 
 /* ─── RESIZE HANDLES ──────────────────────────────── */
 .resize-handle-v{
@@ -116,73 +166,40 @@ canvas{display:block}
 .resize-handle-v:hover .drag-dots,.resize-handle-v.dragging .drag-dots{opacity:1}
 .drag-dots span{width:2px;height:2px;border-radius:50%;background:var(--primary);display:block}
 
-/* ─── SIDEBAR ────────────────────────────────────── */
+/* ─── SIDEBAR (auto-hide channel panel) ──────────── */
 .sidebar{
-  width:16rem; min-width:11.25rem; max-width:25rem; flex-shrink:0; display:flex; flex-direction:column;
-  border-right:1px solid var(--border); background:var(--surf); overflow:hidden;
-  container-type:inline-size; container-name:sidebar;
+  position:absolute; left:0; top:0; bottom:0; z-index:10;
+  width:2.5rem; flex-shrink:0; display:flex; flex-direction:column;
+  border-right:1px solid var(--border); background:var(--surf);
+  overflow:hidden; transition:width .22s cubic-bezier(.4,0,.2,1);
 }
-.sb-section{padding:.75rem; border-bottom:1px solid var(--divider)}
-.sb-section:last-child{border-bottom:none;flex:1;min-height:0;display:flex;flex-direction:column}
+.sidebar:hover{width:13.5rem;box-shadow:4px 0 20px rgba(0,0,0,.12)}
 .sb-label{
-  font-size:.625rem; text-transform:uppercase; letter-spacing:.08em;
-  color:var(--muted); margin-bottom:.5rem; display:flex; align-items:center; justify-content:space-between;
+  font-size:.5625rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted);
 }
-.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:.375rem}
-.stat-cell{
-  background:var(--surf3); border-radius:var(--radius-sm); padding:.375rem .5rem;
-  display:flex; flex-direction:column; gap:.1rem;
+.ch-header{
+  display:flex;align-items:center;padding:.5rem .75rem .3rem;
+  flex-shrink:0;min-width:13.5rem;
 }
-.stat-cell span{font-size:.625rem;color:var(--muted)}
-.stat-cell strong{font-size:.8125rem;font-family:var(--mono);font-variant-numeric:tabular-nums}
-.ctrl-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem}
-.ctrl-row label{font-size:.75rem;color:var(--muted);flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.ctrl-row .ctrl-right{display:flex;align-items:center;gap:.25rem;flex-shrink:0}
-.adj-btn{
-  width:1.625rem;height:1.625rem;display:inline-grid;place-items:center;font-size:.9375rem;font-weight:700;
-  border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surf2);
-  transition:background .12s;
+.ch-list{
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;gap:.125rem;
+  padding:.1875rem .25rem .5rem;
 }
-.adj-btn:hover{background:var(--surf3)}
-.adj-val{font-family:var(--mono);font-size:.6875rem;min-width:3.25rem;text-align:center;color:var(--text);border-radius:.25rem;outline:none;padding:0 .125rem;cursor:text;white-space:nowrap;overflow:hidden}
-.adj-val:focus{background:var(--surf3);box-shadow:0 0 0 1px var(--primary)}
-.sb-input{
-  width:100%;height:1.875rem;border:1px solid var(--border);border-radius:var(--radius-sm);
-  background:var(--surf2);padding:0 .5rem;font-size:.75rem;font-family:var(--mono);outline:none;
-}
-.sb-input:focus{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-soft)}
-#srInput{width:5.625rem;text-align:right}
-.btn-row{display:flex;gap:.375rem;flex-wrap:wrap;margin-top:.4rem}
-.pill-btn{
-  height:1.75rem;padding:0 .6rem;border-radius:var(--radius-md);font-size:.6875rem;font-weight:600;
-  border:1px solid var(--border);background:var(--surf2);transition:background .12s,transform .1s;
-}
-.pill-btn:hover{background:var(--surf3);transform:translateY(-1px)}
-.pill-btn.active{background:var(--primary);color:#fff;border-color:transparent}
-.ch-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:.25rem;padding-right:.125rem}
 .ch-item{
-  display:flex;align-items:center;gap:.5rem;padding:.3rem .4rem;
+  display:flex;align-items:center;gap:.375rem;padding:.3125rem .25rem;
   border-radius:var(--radius-sm); cursor:pointer; user-select:none;
-  transition:background .1s; border:1px solid transparent;
+  transition:background .1s; border:1px solid transparent; white-space:nowrap;
 }
 .ch-item:hover{background:var(--surf3)}
 .ch-item.checked{background:color-mix(in srgb, var(--primary-soft) 60%, transparent); border-color:var(--border)}
 .ch-cb{width:.9375rem;height:.9375rem;accent-color:var(--primary);flex-shrink:0}
 .ch-dot{width:.5rem;height:.5rem;border-radius:50%;flex-shrink:0}
-.ch-name{font-size:.75rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.ch-name{font-size:.75rem;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.ch-empty-msg{font-size:.6875rem;color:var(--faint);padding:.25rem .375rem;white-space:nowrap}
 
 /* ─── WORKSPACE ──────────────────────────────────── */
-.workspace{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
-.plot-header{
-  display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;
-  border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap;
-}
-.info-pill{
-  display:inline-flex;align-items:center;gap:.3rem;padding:0 .5rem;height:1.625rem;
-  background:var(--surf2);border:1px solid var(--border);border-radius:var(--radius-md);
-  font-size:.6875rem;
-}
-.info-pill strong{font-family:var(--mono);font-size:.6875rem}
+.workspace{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;margin-left:2.5rem}
 .main-area{display:flex;flex:1;min-height:0;overflow:hidden}
 .plot-col{flex:1;min-width:7.5rem;display:flex;flex-direction:column;overflow:hidden}
 .canvas-wrap{
@@ -305,56 +322,39 @@ canvas{display:block}
 ::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 
 /* ─── RESPONSIVE ─────────────────────────────────── */
-@media(max-width:68.75em){
-  .sidebar{width:13.75rem}
-}
 @media(max-width:56.25em){
-  .sidebar{width:11.875rem;min-width:11.25rem}
   .fft-col.open{width:32%;min-width:10rem}
+  .topbar-controls{gap:.375rem}
+  .zoom-ctrl{min-width:4.5rem}
 }
 @media(max-width:42.5em){
   body{overflow:auto;height:auto}
   .layout{flex-direction:column}
   .sidebar{
-    width:100%;min-width:unset;max-width:unset;
-    border-right:none;border-bottom:1px solid var(--border);
-    overflow:visible;height:auto;
+    position:static;width:100%;overflow-x:hidden;overflow-y:visible;
+    transition:none;border-right:none;border-bottom:1px solid var(--border);
+    box-shadow:none;
   }
-  .ch-list{max-height:10rem}
-  .workspace{min-height:22.5rem}
+  .sidebar:hover{width:100%;box-shadow:none}
+  .workspace{margin-left:0;min-height:22.5rem}
+  .ch-list{max-height:7rem;overflow-y:auto}
+  .ch-header{min-width:unset}
   .fft-col.open{
     width:100%;min-width:unset;max-width:unset;
     border-left:none;border-top:1px solid var(--border);
     min-height:12.5rem;
   }
   .resize-handle-v{display:none}
-  .plot-header{padding:.375rem .5rem;gap:.3rem}
-  .info-pill{font-size:.625rem;height:1.5rem;padding:0 .4rem}
   .timeline-label{font-size:.5625rem;min-width:2.25rem}
-}
-@media(max-width:26.25em){
-  .topbar{gap:.5rem;padding:.4rem .75rem;min-height:2.75rem}
-  .upload-btn{height:1.875rem;padding:0 .7rem;font-size:.75rem}
-  .icon-btn,.help-btn{width:1.875rem;height:1.875rem}
-  .modal{width:min(22.5rem,96vw);padding:1.25rem}
-  .modal h2{font-size:.9375rem}
+  .topbar-controls{flex-wrap:wrap;justify-content:flex-start;gap:.375rem}
 }
 @media(max-width:33.75em){
   .logo-subtitle{display:none}
+  .topbar{flex-wrap:wrap}
 }
 @media(max-width:28.75em){
   .upload-text{display:none}
-  .upload-btn{width:2.125rem;padding:0;gap:0;justify-content:center}
-}
-/* Sidebar container queries — fire when sidebar is dragged narrow */
-/* Layout reflow only: no font sizes or element sizes change */
-@container sidebar (max-width:13.4375rem){
-  .ctrl-row{flex-direction:column;align-items:flex-start;gap:.15rem;margin-bottom:.55rem}
-  .ctrl-row label{flex:none;overflow:visible;white-space:normal;text-overflow:clip;line-height:1.3}
-  .ctrl-row .ctrl-right{width:100%;justify-content:flex-start}
-  #srInput{width:100%;text-align:left}
-  .btn-row{gap:.25rem}
-  .ch-item{padding:.25rem .3rem}
+  .upload-btn{width:2rem;padding:0;gap:0;justify-content:center}
 }
 @media(prefers-reduced-motion:reduce){
   *{transition-duration:.01ms!important;animation-duration:.01ms!important}
@@ -458,7 +458,7 @@ canvas{display:block}
 
 /* Help button in topbar */
 .help-btn{
-  width:2.125rem;height:2.125rem;display:inline-grid;place-items:center;
+  width:2rem;height:2rem;display:inline-grid;place-items:center;
   border-radius:var(--radius-md); border:1px solid var(--border); background:var(--surf2);
   font-size:.875rem;font-weight:700;color:var(--muted);
   transition:background .15s,color .12s,transform .12s;
@@ -474,7 +474,46 @@ canvas{display:block}
     <img src="chords-logo-192x192.png" alt="Chords logo"/>
     <div class="logo-text"><span class="logo-chords">Chords</span><span class="logo-subtitle"> CSV Plotter</span></div>
   </div>
-  <div class="topbar-actions">
+
+  <div class="topbar-controls">
+    <!-- Sample rate -->
+    <div class="tb-sr-group">
+      <label class="tb-lbl" for="srInput">SPS</label>
+      <input id="srInput" class="tb-input" type="number" min="0" step="any" placeholder="250" aria-label="Sample rate in Hz"/>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- Zoom Y -->
+    <div class="zoom-ctrl">
+      <div class="zoom-info">
+        <span class="zoom-lbl">Zoom&thinsp;Y</span>
+        <span class="zoom-val" id="zoomYTxt">Auto</span>
+      </div>
+      <input type="range" class="zoom-slider" id="zoomYSlider" min="0" max="100" value="36" aria-label="Zoom Y scale"/>
+    </div>
+
+    <!-- Zoom X -->
+    <div class="zoom-ctrl">
+      <div class="zoom-info">
+        <span class="zoom-lbl">Zoom&thinsp;X</span>
+        <span class="zoom-val" id="zoomXTxt">1000</span>
+      </div>
+      <input type="range" class="zoom-slider" id="zoomXSlider" min="0" max="100" value="50" aria-label="Zoom X window"/>
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <!-- Action buttons -->
+    <div class="tb-btn-group">
+      <button class="tb-pill" id="autoBtn">Auto</button>
+      <button class="tb-pill" id="fitBtn">Fit</button>
+      <button class="tb-pill" id="fftBtn">FFT</button>
+    </div>
+  </div>
+
+  <div class="topbar-right">
+    <span class="file-badge" id="fileNameDisplay"></span>
     <button class="upload-btn" type="button" onclick="document.getElementById('csvInput').click()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <span class="upload-text">Upload CSV</span>
@@ -488,89 +527,19 @@ canvas{display:block}
 <!-- LAYOUT -->
 <div class="layout">
 
-  <!-- SIDEBAR -->
+  <!-- SIDEBAR (auto-hide, channels only) -->
   <aside class="sidebar" id="sidebar">
-
-    <!-- Dataset info -->
-    <div class="sb-section">
-      <div class="sb-label">Dataset</div>
-      <div class="stats-row">
-        <div class="stat-cell"><span>Rows</span><strong id="statRows">0</strong></div>
-        <div class="stat-cell"><span>Cols</span><strong id="statCols">0</strong></div>
-        <div class="stat-cell"><span>Window</span><strong id="statWindow">0</strong></div>
-        <div class="stat-cell"><span>Rate</span><strong id="statRate">-</strong></div>
-      </div>
+    <div class="ch-header">
+      <span class="sb-label">Channels</span>
     </div>
-
-    <!-- Controls -->
-    <div class="sb-section">
-      <div class="sb-label">Controls</div>
-
-      <!-- Sampling rate -->
-      <div class="ctrl-row" style="margin-bottom:.5rem">
-        <label for="srInput">Sample rate (Hz)</label>
-        <input id="srInput" class="sb-input" type="number" min="0" step="any" placeholder="e.g. 250"/>
-      </div>
-
-      <!-- Scale -->
-      <div class="ctrl-row">
-        <label>Zoom Y</label>
-        <div class="ctrl-right">
-          <button class="adj-btn" id="scaleDown">−</button>
-          <span class="adj-val" id="scaleVal" contenteditable="true" spellcheck="false" role="textbox" aria-label="Zoom Y value">Auto</span>
-          <button class="adj-btn" id="scaleUp">+</button>
-        </div>
-      </div>
-
-      <!-- Points -->
-      <div class="ctrl-row">
-        <label>Zoom X</label>
-        <div class="ctrl-right">
-          <button class="adj-btn" id="pointsDown">−</button>
-          <span class="adj-val" id="pointsVal" contenteditable="true" spellcheck="false" role="textbox" aria-label="Zoom X value (points)">1000</span>
-          <button class="adj-btn" id="pointsUp">+</button>
-        </div>
-      </div>
-
-      <div class="btn-row">
-        <button class="pill-btn" id="autoBtn">Auto scale</button>
-        <button class="pill-btn" id="fitBtn">Fit all</button>
-        <button class="pill-btn" id="fftBtn">FFT</button>
-      </div>
+    <div id="chList" class="ch-list">
+      <div class="ch-empty-msg">Load a CSV to see channels.</div>
     </div>
-
-    <!-- Channels -->
-    <div class="sb-section">
-      <div class="sb-label">
-        Channels
-        <span style="display:flex;gap:.25rem">
-          <button class="pill-btn" id="selAllBtn" style="height:1.25rem;font-size:.625rem;padding:0 .4rem">All</button>
-          <button class="pill-btn" id="selNoneBtn" style="height:1.25rem;font-size:.625rem;padding:0 .4rem">None</button>
-        </span>
-      </div>
-      <div id="chList" class="ch-list">
-        <div style="font-size:.75rem;color:var(--faint);padding:.25rem 0">Load a CSV to see channels.</div>
-      </div>
-    </div>
-
   </aside>
-
-  <!-- Sidebar resize handle -->
-  <div class="resize-handle-v" id="sidebarHandle">
-    <div class="drag-dots">
-      <span></span><span></span><span></span><span></span><span></span>
-    </div>
-  </div>
 
   <!-- WORKSPACE -->
   <div class="workspace">
 
-    <!-- Plot header pills -->
-    <div class="plot-header">
-      <div class="info-pill"><span>Status</span> <strong id="pillStatus">No file</strong></div>
-      <div class="info-pill"><span>Range</span> <strong id="pillRange">-</strong></div>
-      <div class="info-pill"><span>Time</span> <strong id="pillTime">-</strong></div>
-    </div>
 
     <!-- Main area: plot + FFT -->
     <div class="main-area" id="mainArea">
@@ -682,18 +651,18 @@ const steps = [
     pad: 6,
   },
   {
-    target: () => document.querySelector('.sb-section:nth-child(2)'),
+    target: () => document.querySelector('.topbar-controls'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>`,
     title: 'Controls',
-    body: '<strong>Sample rate</strong> shows real timestamps. <strong>Zoom Y</strong> scales vertically. <strong>Zoom X</strong> changes how many samples are visible, or pinch on the plot.',
-    arrow: 'right',
+    body: '<strong>SPS</strong> shows real timestamps. Drag the <strong>Zoom Y</strong> and <strong>Zoom X</strong> sliders to scale the view, or pinch on the plot.',
+    arrow: 'top',
     pad: 4,
   },
   {
-    target: () => document.querySelector('.sb-section:last-child'),
+    target: () => document.getElementById('sidebar'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
     title: 'Channels',
-    body: 'Toggle channels on or off. Each gets its own color and autoscaled lane. Use <strong>All / None</strong> to select everything at once.',
+    body: 'Hover the left strip to reveal all channels. Toggle each one on or off — each gets its own color and autoscaled lane.',
     arrow: 'right',
     pad: 4,
   },
@@ -714,10 +683,10 @@ const steps = [
     pad: 6,
   },
   {
-    target: () => document.getElementById('sidebarHandle'),
+    target: () => document.getElementById('fftHandle'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/><polyline points="9 18 3 12 9 6"/><line x1="21" y1="12" x2="15" y2="12"/></svg>`,
-    title: 'Resize panels',
-    body: 'Drag this handle to resize the sidebar. The FFT panel edge is draggable too.',
+    title: 'Resize FFT panel',
+    body: 'Drag the FFT panel edge to resize it. Open FFT first with the button in the topbar.',
     arrow: 'right',
     pad: 0,
   },
@@ -940,22 +909,38 @@ const S = {
 const $ = id => document.getElementById(id);
 const el = {
   csvInput: $('csvInput'), themeBtn: $('themeBtn'),
-  statRows: $('statRows'), statCols: $('statCols'), statWindow: $('statWindow'), statRate: $('statRate'),
-  srInput: $('srInput'), scaleDown: $('scaleDown'), scaleUp: $('scaleUp'), scaleVal: $('scaleVal'),
-  pointsDown: $('pointsDown'), pointsUp: $('pointsUp'), pointsVal: $('pointsVal'),
+  srInput: $('srInput'),
+  zoomYSlider: $('zoomYSlider'), zoomYTxt: $('zoomYTxt'),
+  zoomXSlider: $('zoomXSlider'), zoomXTxt: $('zoomXTxt'),
   autoBtn: $('autoBtn'), fitBtn: $('fitBtn'), fftBtn: $('fftBtn'),
-  selAllBtn: $('selAllBtn'), selNoneBtn: $('selNoneBtn'), chList: $('chList'),
-  pillStatus: $('pillStatus'), pillRange: $('pillRange'), pillTime: $('pillTime'),
+  fileNameDisplay: $('fileNameDisplay'),
+  chList: $('chList'),
   canvasWrap: $('canvasWrap'), canvasScroll: $('canvasScroll'),
   mainCanvas: $('mainCanvas'), emptyState: $('emptyState'),
   scrollSlider: $('scrollSlider'), tlStart: $('tlStart'), tlEnd: $('tlEnd'),
   fftCol: $('fftCol'), fftHeader: $('fftHeader'), fftCanvas: $('fftCanvas'),
   fftChBar: $('fftChBar'), fftHandle: $('fftHandle'), fftClose: $('fftClose'),
-  sidebar: $('sidebar'), sidebarHandle: $('sidebarHandle'),
+  sidebar: $('sidebar'),
   mainArea: $('mainArea'),
   modalBackdrop: $('modalBackdrop'), modalSrInput: $('modalSrInput'),
   modalSkip: $('modalSkip'), modalSelect: $('modalSelect'),
 };
+
+/* ── ZOOM MATH ────────────────────────────────────── */
+const SCALE_MIN = 0.05, SCALE_MAX = 200, WIN_MIN = 32;
+const scaleToSlider = s => Math.log(s / SCALE_MIN) / Math.log(SCALE_MAX / SCALE_MIN) * 100;
+const sliderToScale = v => SCALE_MIN * Math.pow(SCALE_MAX / SCALE_MIN, v / 100);
+function windowToSlider(w, maxW) {
+  const mx = Math.max(WIN_MIN + 1, maxW);
+  return Math.log(Math.max(w, WIN_MIN) / WIN_MIN) / Math.log(mx / WIN_MIN) * 100;
+}
+function sliderToWindow(v, maxW) {
+  const mx = Math.max(WIN_MIN + 1, maxW);
+  return Math.round(WIN_MIN * Math.pow(mx / WIN_MIN, v / 100));
+}
+function setSliderFill(slider, pct) {
+  slider.style.background = `linear-gradient(to right,var(--primary) ${pct}%,var(--surf3) ${pct}%)`;
+}
 const mainCtx = el.mainCanvas.getContext('2d');
 const fftCtx  = el.fftCanvas.getContext('2d');
 
@@ -1042,7 +1027,7 @@ function commitLoad(sr) {
   pendingParsed = null;
   S.headers = headers; S.numericIdx = numericIdx; S.rows = rows;
   S.sampleRate = (sr > 0) ? sr : null;
-  S.start = 0; S.window = clamp(1000, 32, rows.length || 1000); S.scale = 1;
+  S.start = 0; S.window = clamp(1000, WIN_MIN, rows.length || 1000); S.scale = 1;
   S.selected.clear();
   S.fftChannels.clear();
   const preferred = numericIdx.filter(i => /ch|lead|bio|adc|signal/i.test(headers[i]));
@@ -1052,6 +1037,7 @@ function commitLoad(sr) {
   });
   buildChannelList(); computeChannelRanges(); renderAll();
   el.srInput.value = S.sampleRate || '';
+  el.fileNameDisplay.textContent = S.fileName || '';
   el.emptyState.style.display = 'none';
 }
 
@@ -1079,7 +1065,7 @@ el.csvInput.addEventListener('change', e => {
 function buildChannelList() {
   el.chList.innerHTML = '';
   if (!S.numericIdx.length) {
-    el.chList.innerHTML = '<div style="font-size:.75rem;color:var(--faint);padding:.25rem 0">No numeric columns found.</div>';
+    el.chList.innerHTML = '<div class="ch-empty-msg">No numeric columns found.</div>';
     buildFftChannelList();
     return;
   }
@@ -1156,26 +1142,32 @@ function buildFftChannelList() {
   });
 }
 
-el.selAllBtn.addEventListener('click', () => {
-  S.numericIdx.forEach(i => S.selected.add(i));
-  buildChannelList(); renderAll();
-});
-el.selNoneBtn.addEventListener('click', () => {
-  S.selected.clear(); buildChannelList(); renderAll();
-});
-
 /* ── CONTROLS ─────────────────────────────────────── */
 el.srInput.addEventListener('input', () => {
   const n = parseFloat(el.srInput.value);
   S.sampleRate = n > 0 ? n : null;
-  updateStats(); renderAll();
+  renderAll();
 });
-el.scaleDown.addEventListener('click', () => { S.scale = clamp(S.scale * 1.1, 0.05, 200); renderAll(); });
-el.scaleUp.addEventListener('click',   () => { S.scale = clamp(S.scale / 1.1, 0.05, 200); renderAll(); });
-el.pointsDown.addEventListener('click',() => { S.window = clamp(Math.round(S.window * 1.1), 32, Math.max(32, S.rows.length)); renderAll(); });
-el.pointsUp.addEventListener('click',  () => { S.window = clamp(Math.round(S.window / 1.1), 32, Math.max(32, S.rows.length)); renderAll(); });
-el.autoBtn.addEventListener('click',   () => { S.scale = 1; computeChannelRanges(); renderAll(); });
-el.fitBtn.addEventListener('click',    () => { S.window = Math.max(32, S.rows.length); S.start = 0; renderAll(); });
+
+el.zoomYSlider.addEventListener('input', () => {
+  const v = Number(el.zoomYSlider.value);
+  S.scale = clamp(sliderToScale(v), SCALE_MIN, SCALE_MAX);
+  setSliderFill(el.zoomYSlider, v);
+  el.zoomYTxt.textContent = Math.abs(S.scale - 1) < 0.005 ? 'Auto' : '×' + S.scale.toFixed(2);
+  renderAll();
+});
+
+el.zoomXSlider.addEventListener('input', () => {
+  const v = Number(el.zoomXSlider.value);
+  const maxW = Math.max(WIN_MIN, S.rows.length || WIN_MIN);
+  S.window = clamp(sliderToWindow(v, maxW), WIN_MIN, maxW);
+  setSliderFill(el.zoomXSlider, v);
+  el.zoomXTxt.textContent = fmtN(S.window);
+  renderAll();
+});
+
+el.autoBtn.addEventListener('click', () => { S.scale = 1; computeChannelRanges(); renderAll(); });
+el.fitBtn.addEventListener('click',  () => { S.window = Math.max(WIN_MIN, S.rows.length); S.start = 0; renderAll(); });
 el.fftBtn.addEventListener('click',    () => {
   S.fftOpen = !S.fftOpen;
   el.fftCol.classList.toggle('open', S.fftOpen);
@@ -1193,31 +1185,6 @@ el.fftClose.addEventListener('click', () => {
   setTimeout(renderAll, 50);
 });
 
-/* ── EDITABLE ZOOM VALUES ─────────────────────────── */
-function applyScaleVal() {
-  const text = (el.scaleVal.textContent || '').replace('x', '').trim();
-  if (!text || text.toLowerCase() === 'auto') { S.scale = 1; }
-  else { const v = parseFloat(text); if (isFinite(v) && v > 0) S.scale = clamp(v, 0.05, 200); }
-  renderAll();
-}
-function applyPointsVal() {
-  const text = (el.pointsVal.textContent || '').replace(/[^0-9]/g, '');
-  const v = parseInt(text, 10);
-  if (isFinite(v) && v > 0) S.window = clamp(v, 32, Math.max(32, S.rows.length));
-  renderAll();
-}
-el.scaleVal.addEventListener('keydown', e => {
-  if (e.key === 'Enter')  { e.preventDefault(); el.scaleVal.blur(); }
-  if (e.key === 'Escape') { e.preventDefault(); el.scaleVal.textContent = S.scale === 1 ? 'Auto' : S.scale.toFixed(2) + 'x'; el.scaleVal.blur(); }
-  e.stopPropagation();
-});
-el.scaleVal.addEventListener('blur', applyScaleVal);
-el.pointsVal.addEventListener('keydown', e => {
-  if (e.key === 'Enter')  { e.preventDefault(); el.pointsVal.blur(); }
-  if (e.key === 'Escape') { e.preventDefault(); el.pointsVal.textContent = fmtN(S.window); el.pointsVal.blur(); }
-  e.stopPropagation();
-});
-el.pointsVal.addEventListener('blur', applyPointsVal);
 el.scrollSlider.addEventListener('input', () => { S.start = Number(el.scrollSlider.value); renderAll(); });
 
 /* ── WHEEL / TRACKPAD SCROLL ─────────────────────── */
@@ -1318,16 +1285,6 @@ function initResize(handle, getEl, getSize, setSize, getMinPx, getMaxPx) {
   });
 }
 
-// Sidebar resize — reads min/max from computed CSS so they scale with fluid font-size
-initResize(
-  el.sidebarHandle,
-  () => el.sidebar,
-  () => el.sidebar.getBoundingClientRect().width,
-  w  => { el.sidebar.style.width = w + 'px'; },
-  () => parseInt(getComputedStyle(el.sidebar).minWidth) || 180,
-  () => Math.min(parseInt(getComputedStyle(el.sidebar).maxWidth) || 400, window.innerWidth * 0.4)
-);
-
 // FFT panel resize — handle sits on the LEFT of the panel, so drag direction is inverted.
 // Handled entirely here (mouse + touch) so both use the same inversion logic.
 (function initFftResize() {
@@ -1378,14 +1335,23 @@ initResize(
   });
 })();
 
-/* ── STATS ───────────────────────────────────────── */
+/* ── STATS / ZOOM DISPLAY ────────────────────────── */
 function updateStats() {
-  el.statRows.textContent = fmtN(S.rows.length);
-  el.statCols.textContent = fmtN(S.numericIdx.length);
-  el.statWindow.textContent = fmtN(Math.min(S.window, S.rows.length));
-  el.statRate.textContent = S.sampleRate ? S.sampleRate + ' Hz' : '-';
-  if (document.activeElement !== el.scaleVal)  el.scaleVal.textContent  = S.scale === 1 ? 'Auto' : S.scale.toFixed(2) + 'x';
-  if (document.activeElement !== el.pointsVal) el.pointsVal.textContent = fmtN(S.window);
+  // Zoom Y slider
+  if (document.activeElement !== el.zoomYSlider) {
+    const yPct = scaleToSlider(S.scale);
+    el.zoomYSlider.value = yPct;
+    setSliderFill(el.zoomYSlider, yPct);
+    el.zoomYTxt.textContent = Math.abs(S.scale - 1) < 0.005 ? 'Auto' : '×' + S.scale.toFixed(2);
+  }
+  // Zoom X slider
+  if (document.activeElement !== el.zoomXSlider) {
+    const maxW = Math.max(WIN_MIN, S.rows.length || WIN_MIN);
+    const xPct = windowToSlider(S.window, maxW);
+    el.zoomXSlider.value = xPct;
+    setSliderFill(el.zoomXSlider, xPct);
+    el.zoomXTxt.textContent = fmtN(S.window);
+  }
 }
 
 function updateSlider() {
@@ -1395,12 +1361,6 @@ function updateSlider() {
   el.scrollSlider.value = String(S.start);
   el.tlStart.textContent = S.sampleRate ? fmt(S.start / S.sampleRate, 2) + 's' : fmtN(S.start);
   el.tlEnd.textContent   = S.sampleRate ? fmt((S.rows.length - 1) / S.sampleRate, 2) + 's' : fmtN(S.rows.length - 1);
-  const end = Math.min(S.rows.length - 1, S.start + S.window - 1);
-  el.pillRange.textContent = `${fmtN(S.start)} - ${fmtN(end)}`;
-  if (S.sampleRate && S.rows.length) {
-    el.pillTime.textContent = `${fmt(S.start / S.sampleRate, 3)}s - ${fmt(end / S.sampleRate, 3)}s`;
-  } else el.pillTime.textContent = '-';
-  el.pillStatus.textContent = S.rows.length ? (S.fileName || 'Loaded') : 'No file';
 }
 
 /* ── CANVAS SIZING ───────────────────────────────── */
@@ -1431,7 +1391,7 @@ function visibleSeries(rows) {
 }
 
 /* ── MAIN PLOT RENDERING ──────────────────────────── */
-const MARGIN = { top: 12, right: 14, bottom: 32, left: 62 };
+const MARGIN = { top: 20, right: 14, bottom: 32, left: 62 };
 const MIN_BAND = 80;
 const PREF_BAND = 130;
 
@@ -1472,13 +1432,15 @@ function drawMain() {
     }
   }
   MARGIN.left = Math.min(dynLeft, 90);
+  MARGIN.bottom = S.sampleRate ? 32 : 8;
 
   const plotW = Math.max(10, canvasW - MARGIN.left - MARGIN.right);
   const plotH = Math.max(10, canvasH - MARGIN.top  - MARGIN.bottom);
 
   if (!rows.length || !N) {
     el.emptyState.style.display = S.rows.length ? 'none' : 'flex';
-    drawTimeAxis(mainCtx, canvasW, canvasH, plotW, plotH, rows.length);
+    drawPointAxis(mainCtx, plotW, rows.length);
+    drawTimeAxis(mainCtx, canvasW, canvasH, plotW, rows.length);
     return;
   }
   el.emptyState.style.display = 'none';
@@ -1565,10 +1527,12 @@ function drawMain() {
   mainCtx.stroke();
   mainCtx.restore();
 
-  drawTimeAxis(mainCtx, canvasW, canvasH, plotW, plotH, rows.length);
+  drawPointAxis(mainCtx, plotW, rows.length);
+  drawTimeAxis(mainCtx, canvasW, canvasH, plotW, rows.length);
 }
 
-function drawTimeAxis(ctx, cw, ch, plotW, plotH, rowCount) {
+function drawPointAxis(ctx, plotW, rowCount) {
+  if (!rowCount) return;
   ctx.save();
   ctx.fillStyle = cssVar('--muted');
   ctx.font = `10px ${cssVar('--mono')}`;
@@ -1576,8 +1540,21 @@ function drawTimeAxis(ctx, cw, ch, plotW, plotH, rowCount) {
   for (let i = 0; i <= 8; i++) {
     const x = MARGIN.left + (i / 8) * plotW;
     const sIdx = S.start + Math.round((i / 8) * Math.max(0, rowCount - 1));
-    const label = S.sampleRate ? fmt(sIdx / S.sampleRate, 2) + 's' : String(sIdx);
-    ctx.fillText(label, x, ch - 8);
+    ctx.fillText(fmtN(sIdx), x, MARGIN.top - 5);
+  }
+  ctx.restore();
+}
+
+function drawTimeAxis(ctx, cw, ch, plotW, rowCount) {
+  if (!S.sampleRate) return;
+  ctx.save();
+  ctx.fillStyle = cssVar('--muted');
+  ctx.font = `10px ${cssVar('--mono')}`;
+  ctx.textAlign = 'center';
+  for (let i = 0; i <= 8; i++) {
+    const x = MARGIN.left + (i / 8) * plotW;
+    const sIdx = S.start + Math.round((i / 8) * Math.max(0, rowCount - 1));
+    ctx.fillText(fmt(sIdx / S.sampleRate, 2) + 's', x, ch - 8);
   }
   ctx.restore();
 }
@@ -1790,14 +1767,6 @@ const ro = new ResizeObserver(renderAll);
 ro.observe(el.canvasWrap);
 ro.observe(el.fftCanvas.parentElement);
 window.addEventListener('resize', () => {
-  if (window.innerWidth > 680) {
-    const cs = getComputedStyle(el.sidebar);
-    const minSW = parseInt(cs.minWidth) || 180;
-    const maxSW = Math.min(parseInt(cs.maxWidth) || 400, window.innerWidth * 0.4);
-    const currSW = el.sidebar.getBoundingClientRect().width;
-    if (currSW > maxSW) el.sidebar.style.width = maxSW + 'px';
-    else if (currSW < minSW) el.sidebar.style.width = minSW + 'px';
-  }
   if (S.fftOpen) {
     const maW = el.mainArea.getBoundingClientRect().width;
     const minFW = parseInt(getComputedStyle(el.fftCol).minWidth) || 180;
@@ -1811,6 +1780,9 @@ window.addEventListener('resize', () => {
 }, { passive: true });
 
 /* ── INIT ────────────────────────────────────────── */
+// Initialise zoom slider fills to their default positions
+setSliderFill(el.zoomYSlider, scaleToSlider(S.scale));
+setSliderFill(el.zoomXSlider, 50);
 renderAll();
 
 })();
