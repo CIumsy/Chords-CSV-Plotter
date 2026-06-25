@@ -27,6 +27,7 @@
   --c5:#d97706; --c6:#0369a1; --c7:#9d174d; --c8:#065f46;
   --grid:rgba(0,0,0,0.07);
   --axis-line:rgba(0,0,0,0.2);
+  --logo-sub:#4a4844;
 }
 [data-theme="dark"]{
   --bg:#111110; --surf:#1b1a18; --surf2:#222120; --surf3:#2a2927;
@@ -41,6 +42,7 @@
   --c5:#7c7cff; --c6:#ff7a00; --c7:#00ffb2; --c8:#ff4d6d;
   --grid:rgba(255,255,255,0.06);
   --axis-line:rgba(255,255,255,0.18);
+  --logo-sub:#d8d4ce;
 }
 
 /* ─── RESET & BASE ───────────────────────────────── */
@@ -78,6 +80,7 @@ canvas{display:block}
   transition:all .3s;
 }
 .logo img{width:1.875rem;height:1.875rem;border-radius:.4375rem;flex-shrink:0}
+.logo-subtitle{color:var(--logo-sub)}
 
 /* Controls strip */
 .topbar-controls{display:flex;align-items:center;gap:.5rem;flex:1;justify-content:center;min-width:0}
@@ -130,14 +133,14 @@ canvas{display:block}
 /* Right side of topbar */
 .topbar-right{display:flex;gap:.375rem;align-items:center;flex-shrink:0}
 .upload-btn{
-  display:inline-flex; align-items:center; gap:.4rem; height:2rem; padding:0 .75rem;
-  background:var(--primary); color:#fff; border-radius:var(--radius-md); font-size:.8125rem; font-weight:600;
+  display:inline-flex; align-items:center; gap:.35rem; height:1.75rem; padding:0 .65rem;
+  background:var(--primary); color:#fff; border-radius:var(--radius-md); font-size:.75rem; font-weight:600;
   transition:background .15s ease, transform .12s ease;
 }
 .upload-btn:hover{background:var(--primary-h);transform:translateY(-1px)}
 .upload-btn:active{transform:none}
 .icon-btn{
-  width:2rem;height:2rem;display:inline-grid;place-items:center;
+  width:1.75rem;height:1.75rem;display:inline-grid;place-items:center;
   border-radius:var(--radius-md); border:1px solid var(--border); background:var(--surf2);
   transition:background .15s,transform .12s;
 }
@@ -174,13 +177,17 @@ canvas{display:block}
   overflow:hidden; transition:width .22s cubic-bezier(.4,0,.2,1);
 }
 .sidebar:hover{width:13.5rem;box-shadow:4px 0 20px rgba(0,0,0,.12)}
-.sb-label{
-  font-size:.5625rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted);
-}
 .ch-header{
-  display:flex;align-items:center;padding:.5rem .75rem .3rem;
-  flex-shrink:0;min-width:13.5rem;
+  display:flex;align-items:center;gap:.5rem;padding:.5rem .625rem .3rem;
+  flex-shrink:0;
 }
+.ch-icon{flex-shrink:0;color:var(--faint);transition:color .2s}
+.sidebar:hover .ch-icon{color:var(--muted)}
+.sb-label{
+  font-size:.5625rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+  white-space:nowrap;opacity:0;transition:opacity .12s;
+}
+.sidebar:hover .sb-label{opacity:1}
 .ch-list{
   flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
   display:flex;flex-direction:column;gap:.125rem;
@@ -194,8 +201,9 @@ canvas{display:block}
 .ch-item:hover{background:var(--surf3)}
 .ch-item.checked{background:color-mix(in srgb, var(--primary-soft) 60%, transparent); border-color:var(--border)}
 .ch-cb{width:.9375rem;height:.9375rem;accent-color:var(--primary);flex-shrink:0}
-.ch-dot{width:.5rem;height:.5rem;border-radius:50%;flex-shrink:0}
-.ch-name{font-size:.75rem;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.ch-name{font-size:.75rem;overflow:hidden;text-overflow:ellipsis;min-width:0;width:0;opacity:0;transition:opacity .12s}
+.sidebar:hover .ch-name{opacity:1;flex:1;width:auto}
+.sidebar:not(:hover) .ch-item{justify-content:center;gap:0}
 .ch-empty-msg{font-size:.6875rem;color:var(--faint);padding:.25rem .375rem;white-space:nowrap}
 
 /* ─── WORKSPACE ──────────────────────────────────── */
@@ -354,7 +362,7 @@ canvas{display:block}
 }
 @media(max-width:28.75em){
   .upload-text{display:none}
-  .upload-btn{width:2rem;padding:0;gap:0;justify-content:center}
+  .upload-btn{width:1.75rem;padding:0;gap:0;justify-content:center}
 }
 @media(prefers-reduced-motion:reduce){
   *{transition-duration:.01ms!important;animation-duration:.01ms!important}
@@ -458,9 +466,9 @@ canvas{display:block}
 
 /* Help button in topbar */
 .help-btn{
-  width:2rem;height:2rem;display:inline-grid;place-items:center;
+  width:1.75rem;height:1.75rem;display:inline-grid;place-items:center;
   border-radius:var(--radius-md); border:1px solid var(--border); background:var(--surf2);
-  font-size:.875rem;font-weight:700;color:var(--muted);
+  font-size:.8125rem;font-weight:700;color:var(--muted);
   transition:background .15s,color .12s,transform .12s;
 }
 .help-btn:hover{background:var(--surf3);color:var(--text);transform:translateY(-1px)}
@@ -530,10 +538,13 @@ canvas{display:block}
   <!-- SIDEBAR (auto-hide, channels only) -->
   <aside class="sidebar" id="sidebar">
     <div class="ch-header">
+      <svg class="ch-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+      </svg>
       <span class="sb-label">Channels</span>
     </div>
     <div id="chList" class="ch-list">
-      <div class="ch-empty-msg">Load a CSV to see channels.</div>
     </div>
   </aside>
 
@@ -1065,7 +1076,7 @@ el.csvInput.addEventListener('change', e => {
 function buildChannelList() {
   el.chList.innerHTML = '';
   if (!S.numericIdx.length) {
-    el.chList.innerHTML = '<div class="ch-empty-msg">No numeric columns found.</div>';
+    el.chList.innerHTML = '';
     buildFftChannelList();
     return;
   }
@@ -1074,18 +1085,16 @@ function buildChannelList() {
     item.className = 'ch-item' + (S.selected.has(ci) ? ' checked' : '');
     const cb = document.createElement('input');
     cb.type = 'checkbox'; cb.className = 'ch-cb'; cb.checked = S.selected.has(ci);
+    cb.style.accentColor = trackColor(idx);
     cb.addEventListener('change', () => {
       if (cb.checked) S.selected.add(ci); else S.selected.delete(ci);
       item.className = 'ch-item' + (S.selected.has(ci) ? ' checked' : '');
       buildFftChannelList();
       renderAll();
     });
-    const dot = document.createElement('span');
-    dot.className = 'ch-dot';
-    dot.style.background = trackColor(idx);
     const name = document.createElement('span');
     name.className = 'ch-name'; name.textContent = S.headers[ci];
-    item.append(cb, dot, name);
+    item.append(cb, name);
     el.chList.appendChild(item);
   });
   buildFftChannelList();
