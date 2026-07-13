@@ -97,7 +97,13 @@ canvas{display:block}
 .zoom-ctrl{display:flex;flex-direction:column;gap:.125rem;min-width:5.5rem;max-width:7rem;flex:1}
 .zoom-info{display:flex;align-items:baseline;justify-content:space-between;gap:.2rem}
 .zoom-lbl{font-size:.5rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
-.zoom-val{font-size:.5rem;font-family:var(--mono);color:var(--text);white-space:nowrap}
+.zoom-val{font-size:.5rem;font-family:var(--mono);color:var(--text);white-space:nowrap;cursor:text;border-radius:2px;padding:0 .125rem;margin:0 -.125rem;transition:background .1s,color .1s}
+.zoom-val:hover,.zoom-val:focus-visible{background:var(--surf3);color:var(--primary);outline:none}
+.zoom-val-input{
+  font-size:.5rem;font-family:var(--mono);color:var(--text);background:var(--surf2);
+  border:1px solid var(--primary);border-radius:2px;outline:none;
+  width:2.75rem;text-align:right;padding:0 .125rem;
+}
 .zoom-slider{
   -webkit-appearance:none;appearance:none;width:100%;height:.3125rem;
   border-radius:var(--radius-full);outline:none;cursor:pointer;border:none;
@@ -517,7 +523,8 @@ canvas{display:block}
     <div class="zoom-ctrl">
       <div class="zoom-info">
         <span class="zoom-lbl">Zoom&thinsp;Y</span>
-        <span class="zoom-val" id="zoomYTxt">Auto</span>
+        <span class="zoom-val" id="zoomYTxt" tabindex="0" role="button" title="Click to enter a custom value">Auto</span>
+        <input type="text" inputmode="decimal" class="zoom-val-input" id="zoomYInput" style="display:none" aria-label="Custom zoom Y multiplier"/>
       </div>
       <input type="range" class="zoom-slider" id="zoomYSlider" min="0" max="100" value="36" aria-label="Zoom Y scale"/>
     </div>
@@ -526,7 +533,8 @@ canvas{display:block}
     <div class="zoom-ctrl">
       <div class="zoom-info">
         <span class="zoom-lbl">Zoom&thinsp;X</span>
-        <span class="zoom-val" id="zoomXTxt">1000</span>
+        <span class="zoom-val" id="zoomXTxt" tabindex="0" role="button" title="Click to enter a custom value">1000</span>
+        <input type="text" inputmode="numeric" class="zoom-val-input" id="zoomXInput" style="display:none" aria-label="Custom zoom X window size"/>
       </div>
       <input type="range" class="zoom-slider" id="zoomXSlider" min="0" max="100" value="50" aria-label="Zoom X window"/>
     </div>
@@ -937,8 +945,8 @@ const $ = id => document.getElementById(id);
 const el = {
   csvInput: $('csvInput'), themeBtn: $('themeBtn'),
   srInput: $('srInput'),
-  zoomYSlider: $('zoomYSlider'), zoomYTxt: $('zoomYTxt'),
-  zoomXSlider: $('zoomXSlider'), zoomXTxt: $('zoomXTxt'),
+  zoomYSlider: $('zoomYSlider'), zoomYTxt: $('zoomYTxt'), zoomYInput: $('zoomYInput'),
+  zoomXSlider: $('zoomXSlider'), zoomXTxt: $('zoomXTxt'), zoomXInput: $('zoomXInput'),
   autoBtn: $('autoBtn'), fitBtn: $('fitBtn'), fftBtn: $('fftBtn'),
   fileNameDisplay: $('fileNameDisplay'), fileBadge: $('fileBadge'), fileCloseBtn: $('fileCloseBtn'),
   chList: $('chList'),
@@ -955,15 +963,15 @@ const el = {
 
 /* ── ZOOM MATH ────────────────────────────────────── */
 const SCALE_MIN = 0.05, SCALE_MAX = 200, WIN_MIN = 32;
-const scaleToSlider = s => Math.log(s / SCALE_MIN) / Math.log(SCALE_MAX / SCALE_MIN) * 100;
-const sliderToScale = v => SCALE_MIN * Math.pow(SCALE_MAX / SCALE_MIN, v / 100);
+const scaleToSlider = s => 100 - Math.log(s / SCALE_MIN) / Math.log(SCALE_MAX / SCALE_MIN) * 100;
+const sliderToScale = v => SCALE_MIN * Math.pow(SCALE_MAX / SCALE_MIN, (100 - v) / 100);
 function windowToSlider(w, maxW) {
   const mx = Math.max(WIN_MIN + 1, maxW);
-  return Math.log(Math.max(w, WIN_MIN) / WIN_MIN) / Math.log(mx / WIN_MIN) * 100;
+  return 100 - Math.log(Math.max(w, WIN_MIN) / WIN_MIN) / Math.log(mx / WIN_MIN) * 100;
 }
 function sliderToWindow(v, maxW) {
   const mx = Math.max(WIN_MIN + 1, maxW);
-  return Math.round(WIN_MIN * Math.pow(mx / WIN_MIN, v / 100));
+  return Math.round(WIN_MIN * Math.pow(mx / WIN_MIN, (100 - v) / 100));
 }
 function setSliderFill(slider, pct) {
   slider.style.background = `linear-gradient(to right,var(--primary) ${pct}%,var(--surf3) ${pct}%)`;
@@ -1191,6 +1199,64 @@ el.zoomXSlider.addEventListener('input', () => {
   setSliderFill(el.zoomXSlider, v);
   el.zoomXTxt.textContent = fmtN(S.window);
   renderAll();
+});
+
+function startZoomEdit(txtEl, inputEl, rawValue) {
+  txtEl.style.display = 'none';
+  inputEl.style.display = '';
+  inputEl.value = rawValue;
+  inputEl.style.display = 'inline-block';
+  inputEl.focus();
+  inputEl.select();
+}
+function endZoomEdit(txtEl, inputEl) {
+  inputEl.style.display = 'none';
+  txtEl.style.display = '';
+}
+
+el.zoomYTxt.addEventListener('click', () => startZoomEdit(el.zoomYTxt, el.zoomYInput, S.scale.toFixed(2)));
+el.zoomYTxt.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startZoomEdit(el.zoomYTxt, el.zoomYInput, S.scale.toFixed(2)); }
+});
+function commitZoomY() {
+  const n = parseFloat(el.zoomYInput.value);
+  if (Number.isFinite(n) && n > 0) {
+    S.scale = clamp(n, SCALE_MIN, SCALE_MAX);
+    const pct = scaleToSlider(S.scale);
+    el.zoomYSlider.value = pct;
+    setSliderFill(el.zoomYSlider, pct);
+    el.zoomYTxt.textContent = Math.abs(S.scale - 1) < 0.005 ? 'Auto' : '×' + S.scale.toFixed(2);
+    renderAll();
+  }
+  endZoomEdit(el.zoomYTxt, el.zoomYInput);
+}
+el.zoomYInput.addEventListener('blur', commitZoomY);
+el.zoomYInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); el.zoomYInput.blur(); }
+  if (e.key === 'Escape') { e.preventDefault(); endZoomEdit(el.zoomYTxt, el.zoomYInput); }
+});
+
+el.zoomXTxt.addEventListener('click', () => startZoomEdit(el.zoomXTxt, el.zoomXInput, S.window));
+el.zoomXTxt.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startZoomEdit(el.zoomXTxt, el.zoomXInput, S.window); }
+});
+function commitZoomX() {
+  const n = parseInt(el.zoomXInput.value, 10);
+  if (Number.isFinite(n) && n > 0) {
+    const maxW = Math.max(WIN_MIN, S.rows.length || WIN_MIN);
+    S.window = clamp(n, WIN_MIN, maxW);
+    const pct = windowToSlider(S.window, maxW);
+    el.zoomXSlider.value = pct;
+    setSliderFill(el.zoomXSlider, pct);
+    el.zoomXTxt.textContent = fmtN(S.window);
+    renderAll();
+  }
+  endZoomEdit(el.zoomXTxt, el.zoomXInput);
+}
+el.zoomXInput.addEventListener('blur', commitZoomX);
+el.zoomXInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); el.zoomXInput.blur(); }
+  if (e.key === 'Escape') { e.preventDefault(); endZoomEdit(el.zoomXTxt, el.zoomXInput); }
 });
 
 el.fileCloseBtn.addEventListener('click', () => {
