@@ -4,7 +4,7 @@
 //   2. THEME TOGGLE - light/dark switch
 //   3. CSV LOADING - parsing a file and the sampling-rate prompt
 //   4. CHANNEL LISTS - sidebar checkboxes and FFT channel picker
-//   5. CONTROLS - SPS field, axis drag-to-zoom, buttons, scrolling, keyboard, FFT resize
+//   5. CONTROLS - SPS field, buttons, scrolling, keyboard, FFT resize
 //   6. MAIN PLOT RENDERING - draws the waveform canvas
 //   7. FFT - frequency-spectrum math and drawing
 //   8. RENDER LOOP & STARTUP - runs the draw functions above and starts the app
@@ -47,7 +47,7 @@ const el = {
   csvInput: $('csvInput'), themeBtn: $('themeBtn'),
   srInput: $('srInput'),
   autoBtn: $('autoBtn'), fitBtn: $('fitBtn'), fftBtn: $('fftBtn'),
-  fileNameDisplay: $('fileNameDisplay'), fileBadge: $('fileBadge'), fileCloseBtn: $('fileCloseBtn'),
+  fileNameDisplay: $('fileNameDisplay'), fileBadge: $('fileBadge'), fileBadgeRow: $('fileBadgeRow'), fileCloseBtn: $('fileCloseBtn'),
   chList: $('chList'),
   canvasWrap: $('canvasWrap'), canvasScroll: $('canvasScroll'),
   mainCanvas: $('mainCanvas'), emptyState: $('emptyState'),
@@ -186,6 +186,7 @@ function commitLoad(sr) {
   el.fileNameDisplay.textContent = S.fileName || '';
   el.fileNameDisplay.title = S.fileName || '';
   el.fileBadge.style.display = S.fileName ? 'flex' : 'none';
+  el.fileBadgeRow.classList.toggle('has-file', Boolean(S.fileName));
   el.emptyState.style.display = 'none';
 }
 
@@ -305,102 +306,13 @@ function buildFftChannelList() {
 }
 
 
-/* ---- CONTROLS (SPS field, axis drag-to-zoom, buttons, scroll, keyboard, FFT panel resize) ---- */
+/* ---- CONTROLS (SPS field, buttons, scroll, keyboard, FFT panel resize) ---- */
 /* -- SAMPLING RATE -- */
 el.srInput.addEventListener('input', () => {
   const n = parseFloat(el.srInput.value);
   S.sampleRate = n > 0 ? n : null;
   renderAll();
 });
-
-/* -- AXIS DRAG-TO-ZOOM -- */
-// Like most plotting/scope tools: drag on the left value-axis to zoom
-// vertically, drag on the top or bottom index/time axis to zoom
-// horizontally. The cursor changes to show which axis you're over, and
-// drawMain() (in the plot section) draws small arrow hints + a highlight
-// on the axis strips so this is discoverable without reading the tour.
-// Dragging inside the plot itself is left alone (that's panning, done via
-// the wheel/trackpad/keyboard handlers below).
-let axisHover = null; // 'y', 'x', or null - read by drawMain() to draw the hover highlight
-
-(function initAxisDragZoom() {
-  const ZOOM_RATE = 1.006; // how fast the zoom reacts to drag distance in pixels
-  let mode = null;         // 'y', 'x', or null while not dragging
-  let startX = 0, startY = 0, startScale = 1, startWindow = 0, startStart = 0;
-
-  function axisAt(clientX, clientY) {
-    const rect = el.mainCanvas.getBoundingClientRect();
-    const x = clientX - rect.left, y = clientY - rect.top;
-    if (x >= 0 && x < MARGIN.left) return 'y';
-    if (y >= 0 && y < MARGIN.top) return 'x';
-    if (S.sampleRate && y > rect.height - MARGIN.bottom && y <= rect.height) return 'x';
-    return null;
-  }
-
-  function setHover(axis) {
-    if (axis === axisHover) return;
-    axisHover = axis;
-    el.canvasWrap.style.cursor = axis === 'y' ? 'ns-resize' : axis === 'x' ? 'ew-resize' : '';
-    renderAll();
-  }
-
-  el.canvasWrap.addEventListener('mousemove', e => {
-    if (mode || !S.rows.length) return;
-    setHover(axisAt(e.clientX, e.clientY));
-  });
-  el.canvasWrap.addEventListener('mouseleave', () => {
-    if (!mode) setHover(null);
-  });
-
-  function startDrag(axis, clientX, clientY) {
-    mode = axis;
-    startX = clientX; startY = clientY;
-    startScale = S.scale; startWindow = S.window; startStart = S.start;
-    document.body.style.userSelect = 'none';
-  }
-  function moveDrag(clientX, clientY) {
-    if (mode === 'y') {
-      const dy = clientY - startY;
-      // Drag up = zoom in (smaller range), drag down = zoom out.
-      S.scale = clamp(startScale * Math.pow(ZOOM_RATE, dy), SCALE_MIN, SCALE_MAX);
-    } else if (mode === 'x') {
-      const dx = clientX - startX;
-      // Drag right = zoom in (fewer samples visible), drag left = zoom out.
-      const newWindow = Math.round(startWindow * Math.pow(ZOOM_RATE, -dx));
-      const center = startStart + startWindow / 2;
-      setHorizontalView(center - newWindow / 2, newWindow);
-    }
-    renderAll();
-  }
-  function endDrag() {
-    if (!mode) return;
-    mode = null;
-    document.body.style.userSelect = '';
-    axisHover = null; // next mousemove (if the pointer is still over an axis) will restore it
-    renderAll();
-  }
-
-  el.canvasWrap.addEventListener('mousedown', e => {
-    if (!S.rows.length) return;
-    const axis = axisAt(e.clientX, e.clientY);
-    if (!axis) return;
-    startDrag(axis, e.clientX, e.clientY);
-    e.preventDefault();
-  });
-  el.canvasWrap.addEventListener('touchstart', e => {
-    if (!S.rows.length) return;
-    const t = e.touches[0];
-    const axis = axisAt(t.clientX, t.clientY);
-    if (!axis) return;
-    startDrag(axis, t.clientX, t.clientY);
-    e.preventDefault();
-  }, { passive: false });
-
-  document.addEventListener('mousemove', e => { if (mode) moveDrag(e.clientX, e.clientY); });
-  document.addEventListener('touchmove', e => { if (mode) moveDrag(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
-  document.addEventListener('mouseup', endDrag);
-  document.addEventListener('touchend', endDrag);
-})();
 
 /* -- FILE CLOSE (unload CSV, reset to fresh state) -- */
 el.fileCloseBtn.addEventListener('click', () => {
@@ -412,6 +324,7 @@ el.fileCloseBtn.addEventListener('click', () => {
   el.srInput.value = '';
   el.csvInput.value = '';
   el.fileBadge.style.display = 'none';
+  el.fileBadgeRow.classList.remove('has-file');
   el.fftCol.classList.remove('open');
   invalidateMinimap();
   buildChannelList(); renderAll();
@@ -836,7 +749,6 @@ function drawMain() {
     el.emptyState.style.display = S.rows.length ? 'none' : 'flex';
     drawPointAxis(mainCtx, plotW, rows.length);
     drawTimeAxis(mainCtx, canvasW, canvasH, plotW, rows.length);
-    if (rows.length) drawAxisZoomHints(mainCtx, plotW, plotH, canvasH);
     return;
   }
   el.emptyState.style.display = 'none';
@@ -925,54 +837,6 @@ function drawMain() {
 
   drawPointAxis(mainCtx, plotW, rows.length);
   drawTimeAxis(mainCtx, canvasW, canvasH, plotW, rows.length);
-  drawAxisZoomHints(mainCtx, plotW, plotH, canvasH);
-}
-
-// Small persistent arrow hints in the axis margins, so it's visible (not just
-// a cursor change on hover) that dragging the axes zooms the plot. The axis
-// currently under the mouse (tracked in the controls section) also gets a
-// light highlight tint.
-function drawAxisZoomHints(ctx, plotW, plotH, canvasH) {
-  const primary = cssVar('--primary');
-  const faint = cssVar('--faint');
-
-  if (axisHover === 'y' || axisHover === 'x') {
-    ctx.save();
-    ctx.fillStyle = primary;
-    ctx.globalAlpha = 0.1;
-    if (axisHover === 'y') {
-      ctx.fillRect(0, MARGIN.top, MARGIN.left, plotH);
-    } else {
-      ctx.fillRect(MARGIN.left, 0, plotW, MARGIN.top);
-      if (S.sampleRate) ctx.fillRect(MARGIN.left, canvasH - MARGIN.bottom, plotW, MARGIN.bottom);
-    }
-    ctx.restore();
-  }
-
-  drawChevronPair(ctx, MARGIN.left / 2, MARGIN.top + 14, true, axisHover === 'y' ? primary : faint);
-  // Offset from plotW/2 so it doesn't sit on top of the middle index tick label.
-  drawChevronPair(ctx, MARGIN.left + plotW * 0.44, MARGIN.top / 2, false, axisHover === 'x' ? primary : faint);
-}
-
-// Draws a small pair of chevrons pointing away from each other: up+down
-// (vertical=true, hints "drag up/down here") or left+right (horizontal).
-function drawChevronPair(ctx, cx, cy, vertical, color) {
-  const gap = 4, len = 4, spread = 3;
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.4;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  if (vertical) {
-    ctx.moveTo(cx - spread, cy - gap); ctx.lineTo(cx, cy - gap - len); ctx.lineTo(cx + spread, cy - gap);
-    ctx.moveTo(cx - spread, cy + gap); ctx.lineTo(cx, cy + gap + len); ctx.lineTo(cx + spread, cy + gap);
-  } else {
-    ctx.moveTo(cx - gap, cy - spread); ctx.lineTo(cx - gap - len, cy); ctx.lineTo(cx - gap, cy + spread);
-    ctx.moveTo(cx + gap, cy - spread); ctx.lineTo(cx + gap + len, cy); ctx.lineTo(cx + gap, cy + spread);
-  }
-  ctx.stroke();
-  ctx.restore();
 }
 
 // Sample-index ticks along the top of the plot (always shown once data is loaded).
@@ -1276,7 +1140,7 @@ const steps = [
     target: () => document.getElementById('canvasWrap'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 12l3-3 4 4 5-6"/></svg>`,
     title: 'Zooming',
-    body: 'Drag the <strong>left value-axis</strong> up/down to zoom vertically, or the <strong>top/bottom axis</strong> left/right to zoom horizontally. You can also pinch or Ctrl+scroll on the plot.',
+    body: 'Pinch or Ctrl+scroll on the plot to zoom horizontally. Use the arrow keys to scroll and zoom vertically.',
     arrow: 'top',
     pad: 4,
   },

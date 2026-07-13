@@ -79,6 +79,7 @@ canvas{display:block}
 /* ---- LAYOUT: topbar, sidebar, plot workspace, FFT panel, modal, responsive ---- */
 /* -- TOP BAR -- */
 .topbar{
+  --topbar-button-height:1.625rem;
   display:flex; align-items:center; gap:.5rem;
   padding:.375rem .875rem; border-bottom:1px solid var(--border);
   background:var(--surf); flex-shrink:0; min-height:2.875rem;
@@ -95,8 +96,11 @@ canvas{display:block}
 .logo img{width:1.875rem;height:1.875rem;border-radius:.4375rem;flex-shrink:0}
 .logo-subtitle{color:var(--logo-sub)}
 
-/* Controls strip */
-.topbar-controls{display:flex;align-items:center;gap:.5rem;flex:1;justify-content:center;min-width:0}
+/* Right-aligned controls strip */
+.topbar-controls{
+  display:flex;align-items:center;gap:.5rem;justify-content:flex-end;
+  min-width:0;margin-left:auto;flex:0 1 auto;
+}
 .tb-sep{width:1px;height:1.25rem;background:var(--divider);flex-shrink:0}
 .tb-sr-group{display:flex;align-items:center;gap:.375rem;flex-shrink:0}
 .tb-lbl{font-size:.5625rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
@@ -110,7 +114,7 @@ canvas{display:block}
 /* Topbar action buttons */
 .tb-btn-group{display:flex;gap:.25rem;flex-shrink:0}
 .tb-pill{
-  height:1.75rem;padding:0 .625rem;border-radius:var(--radius-md);
+  height:var(--topbar-button-height);padding:0 .625rem;border-radius:var(--radius-md);
   font-size:.6875rem;font-weight:600;border:1px solid var(--border);
   background:var(--surf2);transition:background .12s,transform .1s,color .12s;
 }
@@ -118,11 +122,16 @@ canvas{display:block}
 .tb-pill:active{transform:none}
 .tb-pill.active{background:var(--primary);color:#fff;border-color:transparent}
 
-/* File name badge */
+/* Loaded filename shown in the expanded Channels sidebar. */
+.sidebar-file-row{
+  max-height:0;opacity:0;overflow:hidden;flex-shrink:0;
+  padding:0 .375rem;transition:max-height .18s ease,opacity .12s ease,padding .18s ease;
+}
+.sidebar:hover .sidebar-file-row.has-file{max-height:2.25rem;opacity:1;padding:.125rem .375rem .375rem}
 .file-badge{
   display:flex;align-items:center;gap:.2rem;
   font-size:.625rem;font-family:var(--mono);color:var(--muted);
-  max-width:9rem;overflow:hidden;flex-shrink:1;
+  width:100%;min-width:0;overflow:hidden;
   padding:.125rem .2rem .125rem .4rem;border-radius:var(--radius-sm);
   background:var(--surf2);border:1px solid var(--border);
 }
@@ -134,17 +143,15 @@ canvas{display:block}
 }
 .file-close-btn:hover{background:var(--surf3);color:var(--text)}
 
-/* Right side of topbar */
-.topbar-right{display:flex;gap:.375rem;align-items:center;flex-shrink:0}
 .upload-btn{
-  display:inline-flex; align-items:center; gap:.35rem; height:1.75rem; padding:0 .65rem;
+  display:inline-flex; align-items:center; gap:.35rem; height:var(--topbar-button-height); padding:0 .6rem;
   background:var(--primary); color:#fff; border-radius:var(--radius-md); font-size:.75rem; font-weight:600;
   transition:background .15s ease, transform .12s ease;
 }
 .upload-btn:hover{background:var(--primary-h);transform:translateY(-1px)}
 .upload-btn:active{transform:none}
 .icon-btn{
-  width:1.75rem;height:1.75rem;display:inline-grid;place-items:center;
+  width:var(--topbar-button-height);height:var(--topbar-button-height);display:inline-grid;place-items:center;
   border-radius:var(--radius-md); border:1px solid var(--border); background:var(--surf2);
   transition:background .15s,transform .12s;
 }
@@ -414,6 +421,7 @@ canvas{display:block}
     box-shadow:none;
   }
   .sidebar:hover{width:100%;box-shadow:none}
+  .sidebar-file-row.has-file,.sidebar:hover .sidebar-file-row.has-file{max-height:2.25rem;opacity:1;padding:.125rem .375rem .375rem}
   .workspace{margin-left:0;min-height:22.5rem}
   .ch-list{max-height:7rem;overflow-y:auto}
   .ch-header{min-width:unset}
@@ -429,15 +437,16 @@ canvas{display:block}
   .minimap-offset-label--right{right:.5rem}
   .minimap-handle{width:1.25rem}
   .minimap-handle::after{height:1.5rem}
-  .topbar-controls{flex-wrap:wrap;justify-content:flex-start;gap:.375rem}
+  .topbar-controls{flex-wrap:wrap;justify-content:flex-end;gap:.375rem}
 }
 @media(max-width:33.75em){
   .logo-subtitle{display:none}
   .topbar{flex-wrap:wrap}
+  .topbar-controls{flex-basis:100%}
 }
 @media(max-width:28.75em){
   .upload-text{display:none}
-  .upload-btn{width:1.75rem;padding:0;gap:0;justify-content:center}
+  .upload-btn{width:var(--topbar-button-height);padding:0;gap:0;justify-content:center}
 }
 
 
@@ -538,7 +547,7 @@ canvas{display:block}
 
 /* Help button in topbar (opens the tour) */
 .help-btn{
-  width:1.75rem;height:1.75rem;display:inline-grid;place-items:center;
+  width:var(--topbar-button-height);height:var(--topbar-button-height);display:inline-grid;place-items:center;
   border-radius:var(--radius-md); border:1px solid var(--border); background:var(--surf2);
   font-size:.8125rem;font-weight:700;color:var(--muted);
   transition:background .15s,color .12s,transform .12s;

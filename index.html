@@ -33,13 +33,9 @@
       <button class="tb-pill" id="fitBtn">Fit</button>
       <button class="tb-pill" id="fftBtn">FFT</button>
     </div>
-  </div>
 
-  <div class="topbar-right">
-    <div class="file-badge" id="fileBadge" style="display:none">
-      <span class="file-badge-name" id="fileNameDisplay"></span>
-      <button class="file-close-btn" id="fileCloseBtn" title="Close file" aria-label="Close file">&#x2715;</button>
-    </div>
+    <div class="tb-sep"></div>
+
     <button class="upload-btn" type="button" onclick="document.getElementById('csvInput').click()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <span class="upload-text">Upload CSV</span>
@@ -53,7 +49,7 @@
 <!-- LAYOUT -->
 <div class="layout">
 
-  <!-- SIDEBAR (auto-hide, channels only) -->
+  <!-- SIDEBAR (auto-hide channels and loaded filename) -->
   <aside class="sidebar" id="sidebar">
     <div class="ch-header">
       <svg class="ch-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -61,6 +57,12 @@
         <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
       </svg>
       <span class="sb-label">Channels</span>
+    </div>
+    <div class="sidebar-file-row" id="fileBadgeRow">
+      <div class="file-badge" id="fileBadge" style="display:none">
+        <span class="file-badge-name" id="fileNameDisplay"></span>
+        <button class="file-close-btn" id="fileCloseBtn" title="Close file" aria-label="Close file">&#x2715;</button>
+      </div>
     </div>
     <div id="chList" class="ch-list">
     </div>
