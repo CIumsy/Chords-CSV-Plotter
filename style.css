@@ -389,6 +389,28 @@ canvas{display:block}
 .empty-icon{width:3rem;height:3rem;color:var(--faint)}
 .empty-state h3{font-size:.9375rem;font-weight:600;color:var(--muted)}
 .empty-state p{font-size:.75rem;color:var(--faint);max-width:28ch;text-align:center;line-height:1.6}
+.empty-state::before{
+  content:'';position:absolute;inset:var(--space-3);pointer-events:none;
+  border:.125rem dashed transparent;border-radius:var(--radius-lg);
+  transition:border-color .15s ease,background .15s ease;
+}
+.canvas-wrap.drag-active .empty-state::before{
+  border-color:var(--primary);background:var(--primary-soft);
+}
+.canvas-wrap.drag-active .empty-icon{color:var(--primary)}
+.canvas-wrap.drag-active .empty-upload-btn{transform:translateY(-.0625rem)}
+.empty-upload-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:.375rem;
+  height:2.25rem;padding:0 var(--space-4);pointer-events:auto;
+  border-radius:var(--radius-md);background:var(--primary);color:#fff;
+  font-size:.75rem;font-weight:600;line-height:1;
+  box-shadow:0 .125rem .5rem var(--primary-soft);
+  transition:background .15s ease,transform .12s ease;
+}
+.empty-upload-btn svg{display:block;flex-shrink:0}
+.empty-upload-btn:hover{background:var(--primary-h);transform:translateY(-.0625rem)}
+.empty-upload-btn:active{transform:none}
+.empty-upload-btn:focus-visible{outline:.125rem solid var(--primary);outline-offset:.1875rem}
 
 /* -- MODAL OVERLAY -- */
 .modal-backdrop{

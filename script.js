@@ -50,7 +50,7 @@ const el = {
   fileNameDisplay: $('fileNameDisplay'), fileBadge: $('fileBadge'), fileBadgeRow: $('fileBadgeRow'), fileCloseBtn: $('fileCloseBtn'),
   chList: $('chList'),
   canvasWrap: $('canvasWrap'), canvasScroll: $('canvasScroll'),
-  mainCanvas: $('mainCanvas'), emptyState: $('emptyState'),
+  mainCanvas: $('mainCanvas'), emptyState: $('emptyState'), emptyUploadBtn: $('emptyUploadBtn'),
   minimapWrap: $('minimapWrap'), minimapTrack: $('minimapTrack'), minimapCanvas: $('minimapCanvas'),
   minimapViewport: $('minimapViewport'), minimapLeftHandle: $('minimapLeftHandle'), minimapRightHandle: $('minimapRightHandle'),
   tlStart: $('tlStart'), tlEnd: $('tlEnd'),
@@ -242,6 +242,49 @@ el.csvInput.addEventListener('change', e => {
   if (f) handleFile(f);
   e.target.value = '';
 });
+el.emptyUploadBtn.addEventListener('click', () => el.csvInput.click());
+
+/* -- EMPTY-STATE CSV DRAG AND DROP -- */
+let emptyDragDepth = 0;
+function dragContainsFiles(event) {
+  return Array.from(event.dataTransfer?.types || []).includes('Files') || Boolean(event.dataTransfer?.files?.length);
+}
+function clearEmptyDragState() {
+  emptyDragDepth = 0;
+  el.canvasWrap.classList.remove('drag-active');
+}
+
+el.canvasWrap.addEventListener('dragenter', event => {
+  if (!dragContainsFiles(event)) return;
+  event.preventDefault();
+  if (S.rows.length) return;
+  emptyDragDepth++;
+  el.canvasWrap.classList.add('drag-active');
+});
+el.canvasWrap.addEventListener('dragover', event => {
+  if (!dragContainsFiles(event)) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = S.rows.length ? 'none' : 'copy';
+});
+el.canvasWrap.addEventListener('dragleave', () => {
+  if (!emptyDragDepth) return;
+  emptyDragDepth--;
+  if (!emptyDragDepth) el.canvasWrap.classList.remove('drag-active');
+});
+el.canvasWrap.addEventListener('drop', event => {
+  if (!dragContainsFiles(event)) return;
+  event.preventDefault();
+  clearEmptyDragState();
+  if (S.rows.length) return;
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    alert('Please drop a CSV file.');
+    return;
+  }
+  handleFile(file);
+});
+document.addEventListener('dragend', clearEmptyDragState);
 
 
 /* ---- CHANNEL LISTS (sidebar checkboxes + FFT channel picker pills) ---- */
