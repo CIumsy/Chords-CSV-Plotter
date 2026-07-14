@@ -755,7 +755,7 @@ function drawMain() {
 
   // The plot's bottom-axis gap and the minimap's outer spacing use the same
   // responsive inset, keeping the axis-to-minimap distance visually uniform.
-  MARGIN.bottom = window.matchMedia('(max-width: 42.5em)').matches ? 8 : 12;
+  MARGIN.bottom = .75 * rootRemPixels();
 
   const wrapH = el.canvasWrap.getBoundingClientRect().height || 400;
   const wrapW = el.canvasWrap.getBoundingClientRect().width  || 600;
@@ -912,7 +912,7 @@ function drawTimeAxis(ctx, cw, ch, plotW, rowCount) {
   if (!S.sampleRate) return;
   ctx.save();
   ctx.fillStyle = cssVar('--muted');
-  ctx.font = `${MARGIN.bottom <= 8 ? '.5rem' : '.625rem'} ${cssVar('--mono')}`;
+  ctx.font = `.625rem ${cssVar('--mono')}`;
   ctx.textAlign = 'center';
   for (let i = 0; i <= 8; i++) {
     const x = snapDeviceX(ctx, MARGIN.left + (i / 8) * plotW);
