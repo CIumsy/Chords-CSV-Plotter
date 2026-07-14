@@ -27,7 +27,10 @@ function trackColor(i) {
 const S = {
   headers: [],          // column names, e.g. ['Time','CH1','CH2']
   numericIdx: [],        // indices of headers that contain numeric data
-  rows: [],              // parsed CSV rows, each row is an array aligned to headers
+  columns: {},           // numeric columns stored as Float32Array by original column index
+  rowCount: 0,           // total number of samples in each numeric column
+  overview: {},          // fixed-resolution min/max buckets used only by the minimap
+  lod: {},               // multiresolution min/max levels for fast zoomed-out plotting
   selected: new Set(),   // numericIdx values currently shown on the main plot
   fftChannels: new Set(),// numericIdx values currently shown in the FFT panel
   channelRanges: {},     // { [numericIdx]: {lo, hi} } min/max per channel, for autoscale
@@ -44,13 +47,14 @@ const S = {
 // everywhere else as el.someName instead of calling getElementById again.
 const $ = id => document.getElementById(id);
 const el = {
-  csvInput: $('csvInput'), themeBtn: $('themeBtn'),
+  csvInput: $('csvInput'), uploadBtn: $('uploadBtn'), uploadText: $('uploadText'), themeBtn: $('themeBtn'),
   srInput: $('srInput'),
   autoBtn: $('autoBtn'), fitBtn: $('fitBtn'), fftBtn: $('fftBtn'),
   fileNameDisplay: $('fileNameDisplay'), fileBadge: $('fileBadge'), fileBadgeRow: $('fileBadgeRow'), fileCloseBtn: $('fileCloseBtn'),
   chList: $('chList'),
   canvasWrap: $('canvasWrap'), canvasScroll: $('canvasScroll'),
-  mainCanvas: $('mainCanvas'), emptyState: $('emptyState'), emptyUploadBtn: $('emptyUploadBtn'),
+  mainCanvas: $('mainCanvas'), emptyState: $('emptyState'), emptyTitle: $('emptyTitle'),
+  emptyMessage: $('emptyMessage'), emptyUploadBtn: $('emptyUploadBtn'),
   minimapWrap: $('minimapWrap'), minimapTrack: $('minimapTrack'), minimapCanvas: $('minimapCanvas'),
   minimapViewport: $('minimapViewport'), minimapLeftHandle: $('minimapLeftHandle'), minimapRightHandle: $('minimapRightHandle'),
   tlStart: $('tlStart'), tlEnd: $('tlEnd'),
@@ -69,7 +73,8 @@ const fftCtx  = el.fftCanvas.getContext('2d');
 // How far zoom is allowed to go. SCALE is the Y-zoom multiplier (1 = auto-fit
 // each channel's range). WIN_MIN is the smallest number of samples the X-axis
 // can be zoomed in to.
-const SCALE_MIN = 0.05, SCALE_MAX = 200, WIN_MIN = 32;
+const SCALE_MIN = 0.05, SCALE_MAX = 200;
+const WIN_MIN = 64, WIN_MAX = 100000, FFT_MAX_SAMPLES = 32768;
 
 /* -- GENERIC HELPERS -- */
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -114,16 +119,19 @@ function useCrispHairline(ctx) {
 // Horizontal view changes all pass through one function so pan/zoom controls,
 // keyboard shortcuts, and the minimap cannot leave start/window out of range.
 function minHorizontalWindow() {
-  return Math.min(WIN_MIN, Math.max(1, S.rows.length));
+  return Math.min(WIN_MIN, Math.max(1, S.rowCount));
+}
+function maxHorizontalWindow() {
+  return Math.min(WIN_MAX, Math.max(1, S.rowCount));
 }
 function setHorizontalView(start, windowSize) {
-  const total = S.rows.length;
+  const total = S.rowCount;
   if (!total) {
     S.start = 0;
     S.window = 1000;
     return;
   }
-  S.window = clamp(Math.round(windowSize), minHorizontalWindow(), total);
+  S.window = clamp(Math.round(windowSize), minHorizontalWindow(), maxHorizontalWindow());
   S.start = clamp(Math.round(start), 0, Math.max(0, total - S.window));
 }
 
@@ -152,45 +160,360 @@ setThemeIcon();
 
 
 /* ---- CSV LOADING (parsing + the "set sampling rate" prompt) ---- */
-/* -- CSV PARSING -- */
-function parseCSV(text) {
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (!lines.length) throw new Error('Empty file.');
-  function splitLine(l) {
-    const out = []; let cur = '', q = false;
-    for (let i = 0; i < l.length; i++) {
-      const c = l[i];
-      if (c === '"') { if (q && l[i+1] === '"') { cur += '"'; i++; } else q = !q; }
-      else if (c === ',' && !q) { out.push(cur); cur = ''; }
-      else cur += c;
+// Serializing this function into a Blob keeps the worker available when the
+// app is opened directly with file://, where external worker scripts are blocked.
+function csvParserWorkerMain() {
+  'use strict';
+
+  const TEXT_CHUNK_BYTES = 4 * 1024 * 1024;
+  const PROGRESS_INTERVAL_MS = 120;
+
+  function splitCSVRecord(record) {
+    const out = [];
+    let current = '';
+    let quoted = false;
+    for (let i = 0; i < record.length; i++) {
+      const char = record[i];
+      if (char === '"') {
+        if (quoted && record[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (char === ',' && !quoted) {
+        out.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
     }
-    out.push(cur); return out;
+    out.push(current);
+    return out;
   }
-  const headers = splitLine(lines[0]).map((h, i) => h.trim() || `Col${i+1}`);
-  // Only sample the first 120 data rows to decide which columns are numeric -
-  // scanning the whole file would be wasteful for large CSVs.
-  const sample  = lines.slice(1, 121).map(splitLine);
-  const numericIdx = headers.map((_, i) => i).filter(i => {
-    let tot = 0, num = 0;
-    for (const r of sample) { const v = (r[i]||'').trim(); if (!v) continue; tot++; if (isFinite(Number(v))) num++; }
-    return tot === 0 ? true : num / tot >= 0.8;
-  });
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cells = splitLine(lines[i]);
-    rows.push(headers.map((_, j) => { const n = Number((cells[j]||'').trim()); return isFinite(n) ? n : NaN; }));
+
+  async function forEachRecord(file, onRecord, onProgress) {
+    const decoder = new TextDecoder();
+    let offset = 0;
+    let remainder = '';
+    let lastProgressAt = 0;
+
+    while (offset < file.size) {
+      const end = Math.min(file.size, offset + TEXT_CHUNK_BYTES);
+      const bytes = await file.slice(offset, end).arrayBuffer();
+      const text = decoder.decode(bytes, { stream: end < file.size });
+      const block = remainder + text;
+      let lineStart = 0;
+      let newline;
+
+      while ((newline = block.indexOf('\n', lineStart)) !== -1) {
+        let record = block.slice(lineStart, newline);
+        if (record.endsWith('\r')) record = record.slice(0, -1);
+        if (record.trim()) onRecord(record);
+        lineStart = newline + 1;
+      }
+      remainder = block.slice(lineStart);
+      offset = end;
+
+      const now = performance.now();
+      if (now - lastProgressAt >= PROGRESS_INTERVAL_MS || offset === file.size) {
+        onProgress(offset / Math.max(1, file.size));
+        lastProgressAt = now;
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+
+    remainder += decoder.decode();
+    if (remainder.trim()) onRecord(remainder.replace(/\r$/, ''));
   }
-  return { headers, numericIdx, rows };
+
+  async function inspectFile(file) {
+    let headers = null;
+    let rowCount = 0;
+    const sample = [];
+
+    await forEachRecord(file, record => {
+      if (!headers) {
+        headers = splitCSVRecord(record.replace(/^\uFEFF/, ''))
+          .map((header, index) => header.trim() || `Col${index + 1}`);
+        return;
+      }
+      rowCount++;
+      if (sample.length < 120) sample.push(splitCSVRecord(record));
+    }, ratio => postMessage({ type: 'progress', progress: ratio * 0.15 }));
+
+    if (!headers) throw new Error('Empty file.');
+    if (!rowCount) throw new Error('The CSV does not contain any data rows.');
+
+    const numericIdx = headers.map((_, index) => index).filter(index => {
+      let present = 0;
+      let numeric = 0;
+      for (const row of sample) {
+        const raw = (row[index] || '').trim();
+        if (!raw) continue;
+        present++;
+        if (Number.isFinite(Number(raw))) numeric++;
+      }
+      return present === 0 ? true : numeric / present >= 0.8;
+    });
+
+    if (!numericIdx.length) throw new Error('No numeric columns were found.');
+    return { headers, numericIdx, rowCount };
+  }
+
+  async function parseColumns(file, metadata, overviewBinLimit) {
+    const { headers, numericIdx, rowCount } = metadata;
+    const columns = new Map();
+    const ranges = {};
+    const overview = new Map();
+    const binCount = Math.min(overviewBinLimit, rowCount);
+
+    for (const columnIndex of numericIdx) {
+      columns.set(columnIndex, new Float32Array(rowCount));
+      ranges[columnIndex] = { lo: Infinity, hi: -Infinity };
+      const min = new Float32Array(binCount);
+      const max = new Float32Array(binCount);
+      min.fill(Infinity);
+      max.fill(-Infinity);
+      overview.set(columnIndex, { min, max });
+    }
+
+    let skippedHeader = false;
+    let rowIndex = 0;
+    await forEachRecord(file, record => {
+      if (!skippedHeader) {
+        skippedHeader = true;
+        return;
+      }
+      if (rowIndex >= rowCount) return;
+      const cells = splitCSVRecord(record);
+      const bin = Math.min(binCount - 1, Math.floor((rowIndex / rowCount) * binCount));
+
+      for (const columnIndex of numericIdx) {
+        const parsed = Number((cells[columnIndex] || '').trim());
+        const value = Number.isFinite(parsed) ? parsed : NaN;
+        columns.get(columnIndex)[rowIndex] = value;
+        if (!Number.isFinite(value)) continue;
+
+        const range = ranges[columnIndex];
+        if (value < range.lo) range.lo = value;
+        if (value > range.hi) range.hi = value;
+        const bins = overview.get(columnIndex);
+        if (value < bins.min[bin]) bins.min[bin] = value;
+        if (value > bins.max[bin]) bins.max[bin] = value;
+      }
+      rowIndex++;
+    }, ratio => postMessage({ type: 'progress', progress: 0.15 + ratio * 0.65 }));
+
+    for (const columnIndex of numericIdx) {
+      const range = ranges[columnIndex];
+      if (!Number.isFinite(range.lo) || !Number.isFinite(range.hi) || range.lo === range.hi) {
+        range.lo = -1;
+        range.hi = 1;
+      }
+    }
+
+    return { headers, numericIdx, rowCount, columns, ranges, overview, binCount };
+  }
+
+  function buildLodLevels(parsed, factor) {
+    const lod = new Map();
+    const channelCount = parsed.numericIdx.length;
+
+    parsed.numericIdx.forEach((columnIndex, channelPosition) => {
+      const levels = [];
+      let previousMin = parsed.columns.get(columnIndex);
+      let previousMax = previousMin;
+      let bucketSize = 1;
+
+      while (previousMin.length > 2048) {
+        const nextLength = Math.ceil(previousMin.length / factor);
+        const nextMin = new Float32Array(nextLength);
+        const nextMax = new Float32Array(nextLength);
+
+        for (let bucket = 0; bucket < nextLength; bucket++) {
+          const start = bucket * factor;
+          const end = Math.min(previousMin.length, start + factor);
+          let min = Infinity;
+          let max = -Infinity;
+          for (let index = start; index < end; index++) {
+            const low = previousMin[index];
+            const high = previousMax[index];
+            if (Number.isFinite(low) && low < min) min = low;
+            if (Number.isFinite(high) && high > max) max = high;
+          }
+          nextMin[bucket] = min === Infinity ? NaN : min;
+          nextMax[bucket] = max === -Infinity ? NaN : max;
+        }
+
+        bucketSize *= factor;
+        levels.push({ bucketSize, min: nextMin, max: nextMax });
+        previousMin = nextMin;
+        previousMax = nextMax;
+      }
+      lod.set(columnIndex, levels);
+      postMessage({
+        type: 'progress',
+        progress: 0.8 + ((channelPosition + 1) / channelCount) * 0.2,
+      });
+    });
+
+    return lod;
+  }
+
+  self.onmessage = async event => {
+    const { file, overviewBins = 2048, lodFactor = 8 } = event.data || {};
+    try {
+      if (!(file instanceof Blob)) throw new Error('No CSV file was provided.');
+      const metadata = await inspectFile(file);
+      const parsed = await parseColumns(file, metadata, overviewBins);
+      const lod = buildLodLevels(parsed, lodFactor);
+
+      const columns = [];
+      const overview = [];
+      const lodPayload = [];
+      const transfer = [];
+
+      for (const columnIndex of parsed.numericIdx) {
+        const column = parsed.columns.get(columnIndex);
+        const overviewBinsForColumn = parsed.overview.get(columnIndex);
+        const levels = lod.get(columnIndex) || [];
+        columns.push({ columnIndex, buffer: column.buffer });
+        overview.push({
+          columnIndex,
+          minBuffer: overviewBinsForColumn.min.buffer,
+          maxBuffer: overviewBinsForColumn.max.buffer,
+        });
+        lodPayload.push({
+          columnIndex,
+          levels: levels.map(level => ({
+            bucketSize: level.bucketSize,
+            minBuffer: level.min.buffer,
+            maxBuffer: level.max.buffer,
+          })),
+        });
+        transfer.push(column.buffer, overviewBinsForColumn.min.buffer, overviewBinsForColumn.max.buffer);
+        for (const level of levels) transfer.push(level.min.buffer, level.max.buffer);
+      }
+
+      postMessage({
+        type: 'complete',
+        headers: parsed.headers,
+        numericIdx: parsed.numericIdx,
+        rowCount: parsed.rowCount,
+        ranges: parsed.ranges,
+        overviewBinCount: parsed.binCount,
+        columns,
+        overview,
+        lod: lodPayload,
+      }, transfer);
+    } catch (error) {
+      postMessage({ type: 'error', message: error?.message || 'Could not parse the CSV.' });
+    }
+  };
+
 }
 
 /* -- LOAD FILE -- */
 let pendingParsed = null; // parsed CSV waiting on the sampling-rate modal
+let parseWorker = null;
+
+function setParsingState(active, progress = 0, fileName = '') {
+  const percent = Math.round(clamp(progress, 0, 1) * 100);
+  el.uploadBtn.disabled = active;
+  el.emptyUploadBtn.disabled = active;
+  el.canvasWrap.setAttribute('aria-busy', String(active));
+  el.uploadText.textContent = active ? `${percent}%` : 'Upload CSV';
+  if (!S.rowCount) {
+    el.emptyTitle.textContent = active ? 'Loading recording' : 'No data loaded';
+    el.emptyMessage.textContent = active
+      ? `${fileName || 'CSV'} · ${percent}%`
+      : 'Drop a CSV here or choose a file';
+  }
+}
+
+function parseCSVInWorker(file) {
+  return new Promise((resolve, reject) => {
+    const workerSource = `(${csvParserWorkerMain.toString()})();`;
+    const workerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
+    let worker;
+    try {
+      worker = new Worker(workerUrl);
+    } catch (error) {
+      URL.revokeObjectURL(workerUrl);
+      reject(error);
+      return;
+    }
+    parseWorker = worker;
+
+    function finish() {
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+      if (parseWorker === worker) parseWorker = null;
+    }
+
+    worker.onmessage = event => {
+      const message = event.data || {};
+      if (message.type === 'progress') {
+        setParsingState(true, message.progress, file.name);
+        return;
+      }
+      if (message.type === 'error') {
+        finish();
+        reject(new Error(message.message || 'Could not parse CSV.'));
+        return;
+      }
+      if (message.type !== 'complete') return;
+
+      const columns = {};
+      const overview = {};
+      const lod = {};
+      for (const item of message.columns) {
+        columns[item.columnIndex] = new Float32Array(item.buffer);
+      }
+      for (const item of message.overview) {
+        overview[item.columnIndex] = {
+          min: new Float32Array(item.minBuffer),
+          max: new Float32Array(item.maxBuffer),
+        };
+      }
+      for (const item of message.lod) {
+        lod[item.columnIndex] = item.levels.map(level => ({
+          bucketSize: level.bucketSize,
+          min: new Float32Array(level.minBuffer),
+          max: new Float32Array(level.maxBuffer),
+        }));
+      }
+      finish();
+      resolve({
+        headers: message.headers,
+        numericIdx: message.numericIdx,
+        rowCount: message.rowCount,
+        ranges: message.ranges,
+        columns,
+        overview,
+        lod,
+      });
+    };
+    worker.onerror = event => {
+      finish();
+      reject(new Error(event.message || 'The CSV parser stopped unexpectedly.'));
+    };
+    worker.postMessage({ file, overviewBins: 2048, lodFactor: 8 });
+  });
+}
 
 async function handleFile(file) {
-  let parsed;
-  try { parsed = parseCSV(await file.text()); }
-  catch(e) { alert(e.message || 'Could not parse CSV.'); return; }
-  pendingParsed = parsed;
+  if (parseWorker) return;
+  setParsingState(true, 0, file.name);
+  try {
+    pendingParsed = await parseCSVInWorker(file);
+  } catch (error) {
+    alert(error.message || 'Could not parse CSV.');
+    return;
+  } finally {
+    setParsingState(false);
+  }
   S.fileName = file.name;
   el.modalSrInput.value = '';
   el.modalBackdrop.classList.add('visible');
@@ -200,11 +523,13 @@ async function handleFile(file) {
 // Applies the parsed CSV (+ optional sampling rate) to app state and
 // refreshes every dependent UI piece. Called after the modal is dismissed.
 function commitLoad(sr) {
-  const { headers, numericIdx, rows } = pendingParsed;
+  if (!pendingParsed) return;
+  const { headers, numericIdx, rowCount, columns, overview, lod, ranges } = pendingParsed;
   pendingParsed = null;
-  S.headers = headers; S.numericIdx = numericIdx; S.rows = rows;
+  S.headers = headers; S.numericIdx = numericIdx; S.rowCount = rowCount;
+  S.columns = columns; S.overview = overview; S.lod = lod; S.channelRanges = ranges;
   S.sampleRate = (sr > 0) ? sr : null;
-  setHorizontalView(0, Math.min(1000, Math.max(1, rows.length))); S.scale = 1;
+  setHorizontalView(0, Math.min(1000, Math.max(1, rowCount))); S.scale = 1;
   S.selected.clear();
   S.fftChannels.clear();
   // Preselect columns that look like signal channels; otherwise just take the first 8.
@@ -213,7 +538,7 @@ function commitLoad(sr) {
     S.selected.add(i);
     S.fftChannels.add(i);
   });
-  buildChannelList(); computeChannelRanges(); invalidateMinimap(); renderAll();
+  buildChannelList(); invalidateMinimap(); renderAll();
   el.srInput.value = S.sampleRate || '';
   el.fileNameDisplay.textContent = S.fileName || '';
   el.fileNameDisplay.title = S.fileName || '';
@@ -257,14 +582,14 @@ function clearEmptyDragState() {
 el.canvasWrap.addEventListener('dragenter', event => {
   if (!dragContainsFiles(event)) return;
   event.preventDefault();
-  if (S.rows.length) return;
+  if (S.rowCount) return;
   emptyDragDepth++;
   el.canvasWrap.classList.add('drag-active');
 });
 el.canvasWrap.addEventListener('dragover', event => {
   if (!dragContainsFiles(event)) return;
   event.preventDefault();
-  event.dataTransfer.dropEffect = S.rows.length ? 'none' : 'copy';
+  event.dataTransfer.dropEffect = S.rowCount ? 'none' : 'copy';
 });
 el.canvasWrap.addEventListener('dragleave', () => {
   if (!emptyDragDepth) return;
@@ -275,7 +600,7 @@ el.canvasWrap.addEventListener('drop', event => {
   if (!dragContainsFiles(event)) return;
   event.preventDefault();
   clearEmptyDragState();
-  if (S.rows.length) return;
+  if (S.rowCount) return;
   const file = event.dataTransfer?.files?.[0];
   if (!file) return;
   if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -288,20 +613,7 @@ document.addEventListener('dragend', clearEmptyDragState);
 
 
 /* ---- CHANNEL LISTS (sidebar checkboxes + FFT channel picker pills) ---- */
-/* -- CHANNEL RANGES (for autoscale) -- */
-function computeChannelRanges() {
-  S.channelRanges = {};
-  for (const ci of S.numericIdx) {
-    let lo = Infinity, hi = -Infinity;
-    for (let r = 0; r < S.rows.length; r++) {
-      const v = S.rows[r][ci];
-      if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; }
-    }
-    if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo = -1; hi = 1; }
-    S.channelRanges[ci] = { lo, hi };
-  }
-  invalidateMinimap();
-}
+/* Channel ranges and overview buckets are computed once by the parser worker. */
 
 /* -- SIDEBAR CHANNEL LIST -- */
 function buildChannelList() {
@@ -402,7 +714,8 @@ el.sidebarToggle.addEventListener('click', () => {
 
 /* -- FILE CLOSE (unload CSV, reset to fresh state) -- */
 el.fileCloseBtn.addEventListener('click', () => {
-  S.headers = []; S.numericIdx = []; S.rows = [];
+  S.headers = []; S.numericIdx = []; S.columns = {}; S.rowCount = 0;
+  S.overview = {}; S.lod = {};
   S.selected = new Set(); S.fftChannels = new Set();
   S.channelRanges = {}; S.sampleRate = null;
   S.start = 0; S.window = 1000; S.scale = 1;
@@ -417,8 +730,15 @@ el.fileCloseBtn.addEventListener('click', () => {
 });
 
 /* -- ACTION BUTTONS -- */
-el.autoBtn.addEventListener('click', () => { S.scale = 1; computeChannelRanges(); renderAll(); });
-el.fitBtn.addEventListener('click', () => { if (S.rows.length) setHorizontalView(0, S.rows.length); renderAll(); });
+el.autoBtn.addEventListener('click', () => { S.scale = 1; renderAll(); });
+el.fitBtn.addEventListener('click', () => {
+  if (S.rowCount) {
+    const center = S.start + S.window / 2;
+    const widestView = maxHorizontalWindow();
+    setHorizontalView(center - widestView / 2, widestView);
+  }
+  renderAll();
+});
 el.fftBtn.addEventListener('click',   () => {
   S.fftOpen = !S.fftOpen;
   el.fftCol.classList.toggle('open', S.fftOpen);
@@ -439,7 +759,7 @@ el.fftClose.addEventListener('click', () => {
 
 /* -- WHEEL / TRACKPAD SCROLL & PINCH-ZOOM -- */
 el.canvasWrap.addEventListener('wheel', e => {
-  if (!S.rows.length) return;
+  if (!S.rowCount) return;
 
   // Pinch zoom on trackpad (Ctrl+wheel) → Zoom X, centered on current view
   if (e.ctrlKey) {
@@ -448,7 +768,7 @@ el.canvasWrap.addEventListener('wheel', e => {
     const factor = Math.pow(1.003, e.deltaY);
     const center = S.start + oldW / 2;
     setHorizontalView(center - oldW * factor / 2, oldW * factor);
-    renderAll();
+    renderWheelInteraction();
     return;
   }
 
@@ -459,8 +779,8 @@ el.canvasWrap.addEventListener('wheel', e => {
   if (isHorizontal) {
     e.preventDefault();
     const step = Math.max(1, Math.round(Math.abs(e.deltaX) * S.window / wrapW));
-    S.start = clamp(S.start + (e.deltaX > 0 ? step : -step), 0, Math.max(0, S.rows.length - S.window));
-    renderAll();
+    setHorizontalView(S.start + (e.deltaX > 0 ? step : -step), S.window);
+    renderWheelInteraction();
     return;
   }
 
@@ -469,8 +789,8 @@ el.canvasWrap.addEventListener('wheel', e => {
 
   e.preventDefault();
   const step = Math.max(1, Math.round(Math.abs(e.deltaY) * S.window / wrapW));
-  S.start = clamp(S.start + (e.deltaY > 0 ? step : -step), 0, Math.max(0, S.rows.length - S.window));
-  renderAll();
+  setHorizontalView(S.start + (e.deltaY > 0 ? step : -step), S.window);
+  renderWheelInteraction();
 }, { passive: false });
 
 /* -- KEYBOARD SHORTCUTS -- */
@@ -479,8 +799,8 @@ window.addEventListener('keydown', e => {
   const W = Math.max(1, Math.floor(S.window * 0.1));
   if (e.key === 'ArrowLeft')  { setHorizontalView(S.start - W, S.window); renderAll(); e.preventDefault(); }
   if (e.key === 'ArrowRight') { setHorizontalView(S.start + W, S.window); renderAll(); e.preventDefault(); }
-  if (e.key === 'ArrowUp')   { S.scale = clamp(S.scale / 1.1, 0.05, 200); renderAll(); e.preventDefault(); }
-  if (e.key === 'ArrowDown') { S.scale = clamp(S.scale * 1.1, 0.05, 200); renderAll(); e.preventDefault(); }
+  if (e.key === 'ArrowUp')   { S.scale = clamp(S.scale / 1.1, SCALE_MIN, SCALE_MAX); renderAll(); e.preventDefault(); }
+  if (e.key === 'ArrowDown') { S.scale = clamp(S.scale * 1.1, SCALE_MIN, SCALE_MAX); renderAll(); e.preventDefault(); }
   if (e.key === '-') {
     const center = S.start + S.window / 2;
     setHorizontalView(center - S.window * 1.1 / 2, S.window * 1.1);
@@ -576,7 +896,7 @@ function drawMinimap() {
   ctx.clearRect(0, 0, W, H);
   minimapDirty = false;
 
-  const total = S.rows.length;
+  const total = S.rowCount;
   if (!total) return;
 
   const channels = S.numericIdx
@@ -592,18 +912,21 @@ function drawMinimap() {
 
   for (const { ci, idx } of channels) {
     const range = S.channelRanges[ci] || { lo: -1, hi: 1 };
+    const bins = S.overview[ci];
+    if (!bins?.min?.length) continue;
     const span = Math.max(1e-12, range.hi - range.lo);
     ctx.fillStyle = trackColor(idx);
 
-    for (let x = 0; x < W; x++) {
-      const s0 = Math.floor((x / W) * total);
-      const s1 = Math.max(s0 + 1, Math.floor(((x + 1) / W) * total));
+    const displayColumns = Math.max(1, Math.ceil(W));
+    for (let x = 0; x < displayColumns; x++) {
+      const s0 = Math.floor((x / displayColumns) * bins.min.length);
+      const s1 = Math.max(s0 + 1, Math.ceil(((x + 1) / displayColumns) * bins.min.length));
       let mn = Infinity, mx = -Infinity;
-      for (let s = s0; s < Math.min(total, s1); s++) {
-        const value = S.rows[s][ci];
-        if (!Number.isFinite(value)) continue;
-        if (value < mn) mn = value;
-        if (value > mx) mx = value;
+      for (let bin = s0; bin < Math.min(bins.min.length, s1); bin++) {
+        const low = bins.min[bin];
+        const high = bins.max[bin];
+        if (Number.isFinite(low) && low < mn) mn = low;
+        if (Number.isFinite(high) && high > mx) mx = high;
       }
       if (mn === Infinity) continue;
       const yTop = padY + (1 - (mx - range.lo) / span) * usableH;
@@ -619,8 +942,46 @@ function formatTimelinePosition(sampleIndex) {
   return S.sampleRate ? fmt(sampleIndex / S.sampleRate, 2) + 's' : fmtN(sampleIndex);
 }
 
+function minimapCompressedScale(trackWidth) {
+  const minimumWidth = Math.min(trackWidth, rootRemPixels() * 4.5);
+  const largestCompressedWidth = Math.max(
+    minimumWidth,
+    Math.min(trackWidth * 0.28, rootRemPixels() * 12),
+  );
+  return { minimumWidth, largestCompressedWidth };
+}
+
+function minimapVisualWidth(total, trackWidth, windowSize) {
+  const exactWidth = Math.min(trackWidth, (windowSize / total) * trackWidth);
+  const { minimumWidth, largestCompressedWidth } = minimapCompressedScale(trackWidth);
+  if (exactWidth >= minimumWidth || windowSize >= total) return exactWidth;
+
+  // A proportional window can be smaller than a screen pixel in a multi-hour
+  // file. Use a logarithmic display scale in that case so every allowed zoom
+  // level remains usable and resizing is still visibly reflected.
+  const smallestWindow = minHorizontalWindow();
+  const largestWindow = maxHorizontalWindow();
+  const logSpan = Math.log(Math.max(1, largestWindow / smallestWindow));
+  const progress = logSpan > 0
+    ? Math.log(Math.max(1, windowSize / smallestWindow)) / logSpan
+    : 1;
+  const compressedWidth = minimumWidth
+    + clamp(progress, 0, 1) * (largestCompressedWidth - minimumWidth);
+  return Math.max(exactWidth, compressedWidth);
+}
+
+function windowForCompressedMinimapWidth(visualWidth, trackWidth) {
+  const { minimumWidth, largestCompressedWidth } = minimapCompressedScale(trackWidth);
+  const smallestWindow = minHorizontalWindow();
+  const largestWindow = maxHorizontalWindow();
+  const widthSpan = largestCompressedWidth - minimumWidth;
+  if (widthSpan <= 0 || largestWindow <= smallestWindow) return smallestWindow;
+  const progress = clamp((visualWidth - minimumWidth) / widthSpan, 0, 1);
+  return Math.round(smallestWindow * Math.pow(largestWindow / smallestWindow, progress));
+}
+
 function updateMinimapViewport() {
-  const total = S.rows.length;
+  const total = S.rowCount;
   const hasData = total > 0;
   el.minimapWrap.classList.toggle('disabled', !hasData);
   el.minimapWrap.setAttribute('aria-disabled', String(!hasData));
@@ -640,18 +1001,16 @@ function updateMinimapViewport() {
   const trackW = Math.max(1, el.minimapTrack.clientWidth);
   const exactLeft = (S.start / total) * trackW;
   const exactWidth = Math.min(trackW, (S.window / total) * trackW);
-  // Keep the controls usable when zoomed into a tiny fraction of a long file.
-  const minVisualWidth = Math.min(trackW, 26);
-  const visualWidth = Math.max(exactWidth, minVisualWidth);
+  const visualWidth = minimapVisualWidth(total, trackW, S.window);
   const visualLeft = clamp(exactLeft - (visualWidth - exactWidth) / 2, 0, trackW - visualWidth);
 
-  el.minimapViewport.style.left = cssRem(visualLeft);
-  el.minimapViewport.style.width = cssRem(visualWidth);
-  el.minimapViewport.classList.toggle('narrow', visualWidth < 54);
+  el.minimapViewport.style.left = `${(visualLeft / trackW) * 100}%`;
+  el.minimapViewport.style.width = `${(visualWidth / trackW) * 100}%`;
+  el.minimapViewport.classList.toggle('narrow', visualWidth < rootRemPixels() * 5.5);
 
   const end = Math.min(total, S.start + S.window);
   const rangeText = `${formatTimelinePosition(S.start)} – ${formatTimelinePosition(Math.max(S.start, end - 1))}`;
-  el.minimapViewport.title = `${rangeText} (${fmtN(S.window)} samples visible)`;
+  el.minimapViewport.title = `${rangeText} · ${fmtN(S.window)} samples · Drag to move; edges resize`;
   el.minimapViewport.setAttribute('aria-valuemax', String(Math.max(0, total - S.window)));
   el.minimapViewport.setAttribute('aria-valuenow', String(S.start));
   el.minimapViewport.setAttribute('aria-valuetext', `${rangeText}; ${fmtN(S.window)} samples visible`);
@@ -661,11 +1020,15 @@ function updateMinimapViewport() {
   let drag = null;
 
   function beginDrag(mode, e, owner) {
-    if (!S.rows.length || e.button > 0) return;
+    if (!S.rowCount || e.button > 0) return;
     e.preventDefault();
     e.stopPropagation();
     const rect = el.minimapTrack.getBoundingClientRect();
     if (rect.width <= 0) return;
+    const exactWidth = (S.window / S.rowCount) * rect.width;
+    const visualWidth = minimapVisualWidth(S.rowCount, rect.width, S.window);
+    const { largestCompressedWidth } = minimapCompressedScale(rect.width);
+    const largestExactWidth = (maxHorizontalWindow() / S.rowCount) * rect.width;
     try { owner.setPointerCapture(e.pointerId); } catch (_) {}
     drag = {
       mode,
@@ -675,29 +1038,60 @@ function updateMinimapViewport() {
       startWindow: S.window,
       rect,
       owner,
+      startVisualWidth: visualWidth,
+      compressedSizing: visualWidth > exactWidth + 0.5
+        && largestExactWidth <= largestCompressedWidth,
     };
+    clearTimeout(wheelSettleTimer);
+    interactiveRendering = true;
     el.minimapWrap.classList.add('is-dragging');
     document.body.style.userSelect = 'none';
   }
 
   function moveDrag(e) {
-    if (!drag || e.pointerId !== drag.pointerId || !S.rows.length) return;
+    if (!drag || e.pointerId !== drag.pointerId || !S.rowCount) return;
     e.preventDefault();
-    const total = S.rows.length;
+    const total = S.rowCount;
     const deltaSamples = Math.round(((e.clientX - drag.startX) / drag.rect.width) * total);
 
     if (drag.mode === 'pan') {
       setHorizontalView(drag.startStart + deltaSamples, drag.startWindow);
     } else if (drag.mode === 'left') {
       const fixedEnd = drag.startStart + drag.startWindow;
-      const newStart = clamp(drag.startStart + deltaSamples, 0, fixedEnd - minHorizontalWindow());
+      if (drag.compressedSizing) {
+        const visualWidth = drag.startVisualWidth + (drag.startX - e.clientX) * 2;
+        const newWindow = clamp(
+          windowForCompressedMinimapWidth(visualWidth, drag.rect.width),
+          minHorizontalWindow(),
+          Math.min(maxHorizontalWindow(), fixedEnd),
+        );
+        setHorizontalView(fixedEnd - newWindow, newWindow);
+        renderInteractive();
+        return;
+      }
+      const newStart = clamp(
+        drag.startStart + deltaSamples,
+        Math.max(0, fixedEnd - maxHorizontalWindow()),
+        fixedEnd - minHorizontalWindow(),
+      );
       setHorizontalView(newStart, fixedEnd - newStart);
     } else if (drag.mode === 'right') {
-      const maxWindowFromStart = total - drag.startStart;
+      const maxWindowFromStart = Math.min(maxHorizontalWindow(), total - drag.startStart);
+      if (drag.compressedSizing) {
+        const visualWidth = drag.startVisualWidth + (e.clientX - drag.startX) * 2;
+        const newWindow = clamp(
+          windowForCompressedMinimapWidth(visualWidth, drag.rect.width),
+          minHorizontalWindow(),
+          maxWindowFromStart,
+        );
+        setHorizontalView(drag.startStart, newWindow);
+        renderInteractive();
+        return;
+      }
       const newWindow = clamp(drag.startWindow + deltaSamples, minHorizontalWindow(), maxWindowFromStart);
       setHorizontalView(drag.startStart, newWindow);
     }
-    renderAll();
+    renderInteractive();
   }
 
   function endDrag(e) {
@@ -706,6 +1100,7 @@ function updateMinimapViewport() {
     drag = null;
     el.minimapWrap.classList.remove('is-dragging');
     document.body.style.userSelect = '';
+    finishInteractiveRendering();
   }
 
   el.minimapViewport.addEventListener('pointerdown', e => {
@@ -718,17 +1113,17 @@ function updateMinimapViewport() {
   // Clicking the overview jumps the current window to that location and then
   // immediately becomes a pan drag, matching the Cardio minimap interaction.
   el.minimapTrack.addEventListener('pointerdown', e => {
-    if (!S.rows.length || el.minimapViewport.contains(e.target)) return;
+    if (!S.rowCount || el.minimapViewport.contains(e.target)) return;
     const rect = el.minimapTrack.getBoundingClientRect();
     if (rect.width <= 0) return;
     const ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
-    setHorizontalView(ratio * S.rows.length - S.window / 2, S.window);
-    renderAll();
+    setHorizontalView(ratio * S.rowCount - S.window / 2, S.window);
     beginDrag('pan', e, el.minimapTrack);
     if (drag) {
       drag.startStart = S.start;
       drag.startWindow = S.window;
     }
+    renderInteractive();
   });
 
   document.addEventListener('pointermove', moveDrag, { passive: false });
@@ -738,12 +1133,12 @@ function updateMinimapViewport() {
 
   // Keyboard navigation when the minimap window is focused.
   el.minimapViewport.addEventListener('keydown', e => {
-    if (!S.rows.length) return;
+    if (!S.rowCount) return;
     const step = Math.max(1, Math.round(S.window * (e.shiftKey ? 0.25 : 0.05)));
     if (e.key === 'ArrowLeft') setHorizontalView(S.start - step, S.window);
     else if (e.key === 'ArrowRight') setHorizontalView(S.start + step, S.window);
     else if (e.key === 'Home') setHorizontalView(0, S.window);
-    else if (e.key === 'End') setHorizontalView(S.rows.length - S.window, S.window);
+    else if (e.key === 'End') setHorizontalView(S.rowCount - S.window, S.window);
     else if (e.key === '-' || e.key === '_') {
       const center = S.start + S.window / 2;
       setHorizontalView(center - S.window * 1.15 / 2, S.window * 1.15);
@@ -773,18 +1168,30 @@ function sizeCanvas(canvas, w, h) {
 }
 
 /* -- CURRENT WINDOW DATA -- */
-function windowRows() {
-  return S.rows.slice(S.start, S.start + S.window);
-}
-function visibleSeries(rows) {
+function visibleSeries() {
   return S.numericIdx
-    .map((ci, idx) => ({ ci, idx, name: S.headers[ci], color: trackColor(idx) }))
-    .filter(s => S.selected.has(s.ci))
-    .map(s => {
-      const vals = new Float64Array(rows.length);
-      for (let r = 0; r < rows.length; r++) vals[r] = rows[r][s.ci];
-      return { ...s, vals };
-    });
+    .map((ci, idx) => ({
+      ci,
+      idx,
+      name: S.headers[ci],
+      color: trackColor(idx),
+      data: S.columns[ci],
+      levels: S.lod[ci] || [],
+    }))
+    .filter(series => S.selected.has(series.ci) && series.data);
+}
+
+function chooseLodLevel(levels, samplesPerPixel) {
+  let chosen = null;
+  // While navigating, prefer a coarser cached envelope. It preserves spikes
+  // but keeps the number of canvas operations low enough to follow the pointer.
+  const detailMultiplier = interactiveRendering ? 8 : 2;
+  const targetBucketSize = samplesPerPixel * detailMultiplier;
+  for (const level of levels) {
+    if (level.bucketSize > targetBucketSize) break;
+    chosen = level;
+  }
+  return chosen;
 }
 
 /* -- MAIN PLOT RENDERING -- */
@@ -794,7 +1201,7 @@ const PREF_BAND = 130;
 
 function drawMain() {
   const N = S.numericIdx.filter(i => S.selected.has(i)).length;
-  const rows = windowRows();
+  const visibleCount = Math.max(0, Math.min(S.window, S.rowCount - S.start));
 
   // The plot's bottom-axis gap and the minimap's outer spacing use the same
   // responsive inset, keeping the axis-to-minimap distance visually uniform.
@@ -837,15 +1244,15 @@ function drawMain() {
   const plotW = Math.max(10, canvasW - MARGIN.left - MARGIN.right);
   const plotH = Math.max(10, canvasH - MARGIN.top  - MARGIN.bottom);
 
-  if (!rows.length || !N) {
-    el.emptyState.style.display = S.rows.length ? 'none' : 'flex';
-    drawPointAxis(mainCtx, plotW, rows.length);
-    drawTimeAxis(mainCtx, canvasW, canvasH, plotW, rows.length);
+  if (!visibleCount || !N) {
+    el.emptyState.style.display = S.rowCount ? 'none' : 'flex';
+    drawPointAxis(mainCtx, plotW, visibleCount);
+    drawTimeAxis(mainCtx, canvasW, canvasH, plotW, visibleCount);
     return;
   }
   el.emptyState.style.display = 'none';
 
-  const series = visibleSeries(rows);
+  const series = visibleSeries();
   const bandH  = plotH / Math.max(1, series.length);
 
   const gridColor = cssVar('--grid');
@@ -857,8 +1264,6 @@ function drawMain() {
     mainCtx.beginPath(); mainCtx.moveTo(x, MARGIN.top); mainCtx.lineTo(x, MARGIN.top + plotH); mainCtx.stroke();
   }
   mainCtx.restore();
-
-  const step = Math.max(1, Math.ceil(rows.length / (plotW * 2)));
 
   series.forEach((s, si) => {
     const bandTop  = MARGIN.top + si * bandH;
@@ -906,14 +1311,40 @@ function drawMain() {
     mainCtx.lineWidth   = 1.6;
     mainCtx.lineJoin    = 'round';
     mainCtx.lineCap     = 'round';
+    const samplesPerPixel = visibleCount / Math.max(1, plotW);
+    const level = chooseLodLevel(s.levels, samplesPerPixel);
     mainCtx.beginPath();
-    let started = false;
-    for (let i = 0; i < s.vals.length; i += step) {
-      const v = s.vals[i];
-      if (!isFinite(v)) { started = false; continue; }
-      const x = MARGIN.left + (i / Math.max(1, s.vals.length - 1)) * plotW;
-      const y = innerTop + (1 - (v - yMin) / Math.max(1e-12, yMax - yMin)) * innerH;
-      if (!started) { mainCtx.moveTo(x, y); started = true; } else mainCtx.lineTo(x, y);
+
+    if (level) {
+      const firstBucket = Math.floor(S.start / level.bucketSize);
+      const lastBucket = Math.min(
+        level.min.length,
+        Math.ceil((S.start + visibleCount) / level.bucketSize),
+      );
+      for (let bucket = firstBucket; bucket < lastBucket; bucket++) {
+        const low = level.min[bucket];
+        const high = level.max[bucket];
+        if (!Number.isFinite(low) || !Number.isFinite(high)) continue;
+        const sampleCenter = bucket * level.bucketSize + level.bucketSize / 2;
+        const xRatio = (sampleCenter - S.start) / Math.max(1, visibleCount - 1);
+        const x = MARGIN.left + clamp(xRatio, 0, 1) * plotW;
+        const yTop = innerTop + (1 - (high - yMin) / Math.max(1e-12, yMax - yMin)) * innerH;
+        const yBottom = innerTop + (1 - (low - yMin) / Math.max(1e-12, yMax - yMin)) * innerH;
+        mainCtx.moveTo(x, yTop);
+        mainCtx.lineTo(x, yBottom);
+      }
+    } else {
+      let started = false;
+      const end = Math.min(s.data.length, S.start + visibleCount);
+      for (let sample = S.start; sample < end; sample++) {
+        const value = s.data[sample];
+        if (!Number.isFinite(value)) { started = false; continue; }
+        const localIndex = sample - S.start;
+        const x = MARGIN.left + (localIndex / Math.max(1, visibleCount - 1)) * plotW;
+        const y = innerTop + (1 - (value - yMin) / Math.max(1e-12, yMax - yMin)) * innerH;
+        if (!started) { mainCtx.moveTo(x, y); started = true; }
+        else mainCtx.lineTo(x, y);
+      }
     }
     mainCtx.stroke();
     mainCtx.restore();
@@ -931,8 +1362,8 @@ function drawMain() {
   mainCtx.stroke();
   mainCtx.restore();
 
-  drawPointAxis(mainCtx, plotW, rows.length);
-  drawTimeAxis(mainCtx, canvasW, canvasH, plotW, rows.length);
+  drawPointAxis(mainCtx, plotW, visibleCount);
+  drawTimeAxis(mainCtx, canvasW, canvasH, plotW, visibleCount);
 }
 
 // Sample-index ticks along the top of the plot (always shown once data is loaded).
@@ -1018,25 +1449,30 @@ function drawFFT() {
   fftCtx.fillStyle = cssVar('--surf');
   fftCtx.fillRect(0, 0, W, H);
 
-  const rows = windowRows();
+  const visibleCount = Math.max(0, Math.min(S.window, S.rowCount - S.start));
+  const fftCount = Math.min(visibleCount, FFT_MAX_SAMPLES);
+  const fftStart = S.start + Math.max(0, Math.floor((visibleCount - fftCount) / 2));
   const sr = S.sampleRate || 1;
   const nyquist = sr / 2;
   const maxFreq = S.sampleRate ? Math.min(nyquist, 150) : nyquist;
 
   const fftSeries = S.numericIdx
     .map((ci, idx) => ({ ci, idx, name: S.headers[ci], color: trackColor(idx) }))
-    .filter(s => S.fftChannels.has(s.ci))
+    .filter(s => S.fftChannels.has(s.ci) && S.columns[s.ci])
     .map(s => {
-      const vals = new Float64Array(rows.length);
-      for (let r = 0; r < rows.length; r++) vals[r] = rows[r][s.ci];
+      const vals = new Float64Array(fftCount);
+      const source = S.columns[s.ci];
+      for (let r = 0; r < fftCount; r++) {
+        const value = source[fftStart + r];
+        vals[r] = Number.isFinite(value) ? value : 0;
+      }
       return { ...s, vals };
     });
 
   // Compute magnitudes first so we know globalMax for a dynamic Y margin
   let globalMax = 0;
   const computed = fftSeries.slice(0, 8).map(s => {
-    const clean = Array.from(s.vals).map(v => isFinite(v) ? v : 0);
-    const { mags, n } = fftMags(clean);
+    const { mags, n } = fftMags(s.vals);
     const cutoff = S.sampleRate ? Math.min(mags.length, Math.ceil(maxFreq * n / sr) + 1) : mags.length;
     for (let i = 1; i < cutoff; i++) {
       if (mags[i] > globalMax) globalMax = mags[i];
@@ -1129,7 +1565,10 @@ function drawFFT() {
 
   drawFFTAxes(fftCtx, M, pW, pH, W, H, maxFreq, globalMax);
 
-  const capLabel = S.sampleRate ? `FFT 0-${Math.round(maxFreq)} Hz` : 'FFT: set sample rate for Hz';
+  const sampleNote = visibleCount > FFT_MAX_SAMPLES ? ` · center ${fmtN(fftCount)} samples` : '';
+  const capLabel = S.sampleRate
+    ? `FFT 0-${Math.round(maxFreq)} Hz${sampleNote}`
+    : `FFT: set sample rate for Hz${sampleNote}`;
   el.fftHeader.textContent = capLabel;
 }
 
@@ -1177,12 +1616,58 @@ function updateTimeline() {
 // All state-changing code calls renderAll() rather than drawing directly;
 // this coalesces bursts of changes (e.g. drag events) into one frame.
 let raf = 0;
+let fftTimer = 0;
+let wheelSettleTimer = 0;
+let interactiveRendering = false;
+let lastInteractiveMainDraw = 0;
+
+function scheduleFFT() {
+  clearTimeout(fftTimer);
+  if (!S.fftOpen) return;
+  fftTimer = setTimeout(() => {
+    fftTimer = 0;
+    requestAnimationFrame(drawFFT);
+  }, 120);
+}
+
+function renderInteractive() {
+  interactiveRendering = true;
+  clearTimeout(fftTimer);
+  if (raf) return;
+  raf = requestAnimationFrame(timestamp => {
+    raf = 0;
+    updateTimeline();
+    // The viewport follows at display refresh rate; the heavier waveform is
+    // limited to roughly 30 FPS and uses the coarser LOD selected above.
+    if (timestamp - lastInteractiveMainDraw >= 32) {
+      lastInteractiveMainDraw = timestamp;
+      drawMain();
+    }
+  });
+}
+
+function finishInteractiveRendering() {
+  if (!interactiveRendering) return;
+  interactiveRendering = false;
+  lastInteractiveMainDraw = 0;
+  renderAll();
+}
+
+function renderWheelInteraction() {
+  renderInteractive();
+  clearTimeout(wheelSettleTimer);
+  wheelSettleTimer = setTimeout(finishInteractiveRendering, 110);
+}
+
 function renderAll() {
-  cancelAnimationFrame(raf);
+  clearTimeout(wheelSettleTimer);
+  interactiveRendering = false;
+  if (raf) cancelAnimationFrame(raf);
   raf = requestAnimationFrame(() => {
+    raf = 0;
     updateTimeline();
     drawMain();
-    drawFFT();
+    if (!interactiveRendering) scheduleFFT();
   });
 }
 
@@ -1475,7 +1960,7 @@ document.addEventListener('csvplotter:data-loaded', () => {
   // Let the plot and minimap finish their first render before measuring targets.
   setTimeout(() => {
     autoTourScheduled = false;
-    if (S.rows.length && !active && !localStorage.getItem(TOUR_SEEN_KEY)) startTour();
+    if (S.rowCount && !active && !localStorage.getItem(TOUR_SEEN_KEY)) startTour();
   }, 300);
 });
 

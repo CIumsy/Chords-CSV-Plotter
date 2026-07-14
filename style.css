@@ -159,6 +159,7 @@ canvas{display:block}
 .upload-btn svg,.icon-btn svg{display:block;flex-shrink:0}
 .upload-btn:hover{background:var(--primary-h);transform:translateY(-.0625rem)}
 .upload-btn:active{transform:none}
+.upload-btn:disabled,.empty-upload-btn:disabled{cursor:wait;opacity:.72;transform:none}
 .icon-btn{
   width:var(--topbar-button-height);height:var(--topbar-button-height);display:inline-grid;place-items:center;
   border-radius:var(--radius-md);border:.0625rem solid var(--border);background:var(--surf2);
@@ -278,7 +279,7 @@ canvas{display:block}
   position:relative;width:100%;height:100%;overflow:hidden;
   border:.0625rem solid var(--border);border-radius:.4375rem;
   background:rgba(0,0,0,.22);box-shadow:inset 0 .0625rem .125rem rgba(0,0,0,.16);
-  cursor:crosshair;touch-action:none;user-select:none;-webkit-user-select:none;
+  cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;
 }
 [data-theme="light"] .minimap-track{background:rgba(255,255,255,.26)}
 .minimap-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
@@ -302,7 +303,7 @@ canvas{display:block}
 .minimap-viewport:focus-visible{outline:.125rem solid var(--primary);outline-offset:-.125rem}
 .minimap-wrap.is-dragging .minimap-viewport{cursor:grabbing;background:color-mix(in srgb,var(--primary) 25%,transparent)}
 .minimap-handle{
-  position:absolute;top:0;bottom:0;width:1rem;z-index:4;
+  position:absolute;top:0;bottom:0;width:.875rem;z-index:4;
   cursor:ew-resize;touch-action:none;
 }
 .minimap-handle::after{
@@ -313,15 +314,15 @@ canvas{display:block}
 }
 [data-theme="light"] .minimap-handle::after{color:rgba(0,55,140,.85)}
 .minimap-handle--left{left:0}
-.minimap-handle--left::after{left:.1875rem}
+.minimap-handle--left::after{left:.15625rem}
 .minimap-handle--right{right:0}
-.minimap-handle--right::after{right:.1875rem}
+.minimap-handle--right::after{right:.15625rem}
 .minimap-window-grip{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   display:flex;gap:.125rem;align-items:center;pointer-events:none;opacity:.7;
 }
 .minimap-window-grip i{display:block;width:.0625rem;height:.75rem;background:currentColor;border-radius:.0625rem}
-.minimap-viewport.narrow .minimap-window-grip{display:none}
+.minimap-viewport.narrow .minimap-window-grip{opacity:.45}
 .minimap-wrap.disabled{display:none}
 .minimap-wrap:not(.disabled) .minimap-track:hover{border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
 
