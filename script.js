@@ -49,7 +49,7 @@ const $ = id => document.getElementById(id);
 const el = {
   csvInput: $('csvInput'), uploadBtn: $('uploadBtn'), uploadText: $('uploadText'), themeBtn: $('themeBtn'),
   srInput: $('srInput'),
-  autoBtn: $('autoBtn'), fitBtn: $('fitBtn'), fftBtn: $('fftBtn'),
+  scaleMinusBtn: $('scaleMinusBtn'), scalePlusBtn: $('scalePlusBtn'), scaleValue: $('scaleValue'), fftBtn: $('fftBtn'),
   fileNameDisplay: $('fileNameDisplay'), fileBadge: $('fileBadge'), fileBadgeRow: $('fileBadgeRow'), fileCloseBtn: $('fileCloseBtn'),
   chList: $('chList'),
   canvasWrap: $('canvasWrap'), canvasScroll: $('canvasScroll'),
@@ -538,6 +538,7 @@ function commitLoad(sr) {
     S.selected.add(i);
     S.fftChannels.add(i);
   });
+  syncVerticalScaleControl();
   buildChannelList(); invalidateMinimap(); renderAll();
   el.srInput.value = S.sampleRate || '';
   el.fileNameDisplay.textContent = S.fileName || '';
@@ -695,6 +696,20 @@ function buildFftChannelList() {
 
 
 /* ---- CONTROLS (sample-rate field, buttons, scroll, keyboard, FFT panel resize) ---- */
+/* -- VERTICAL SCALE -- */
+function syncVerticalScaleControl() {
+  const displayScale = Number((1 / S.scale).toPrecision(3));
+  el.scaleValue.textContent = `${displayScale}×`;
+  el.scaleMinusBtn.disabled = S.scale >= SCALE_MAX;
+  el.scalePlusBtn.disabled = S.scale <= SCALE_MIN;
+}
+
+function setVerticalScale(nextScale) {
+  S.scale = clamp(nextScale, SCALE_MIN, SCALE_MAX);
+  syncVerticalScaleControl();
+  renderAll();
+}
+
 /* -- SAMPLING RATE -- */
 el.srInput.addEventListener('input', () => {
   const n = parseFloat(el.srInput.value);
@@ -726,19 +741,13 @@ el.fileCloseBtn.addEventListener('click', () => {
   el.fileBadgeRow.classList.remove('has-file');
   el.fftCol.classList.remove('open');
   invalidateMinimap();
+  syncVerticalScaleControl();
   buildChannelList(); renderAll();
 });
 
 /* -- ACTION BUTTONS -- */
-el.autoBtn.addEventListener('click', () => { S.scale = 1; renderAll(); });
-el.fitBtn.addEventListener('click', () => {
-  if (S.rowCount) {
-    const center = S.start + S.window / 2;
-    const widestView = maxHorizontalWindow();
-    setHorizontalView(center - widestView / 2, widestView);
-  }
-  renderAll();
-});
+el.scaleMinusBtn.addEventListener('click', () => setVerticalScale(S.scale * 1.2));
+el.scalePlusBtn.addEventListener('click', () => setVerticalScale(S.scale / 1.2));
 el.fftBtn.addEventListener('click',   () => {
   S.fftOpen = !S.fftOpen;
   el.fftCol.classList.toggle('open', S.fftOpen);
@@ -793,24 +802,12 @@ el.canvasWrap.addEventListener('wheel', e => {
   renderWheelInteraction();
 }, { passive: false });
 
-/* -- KEYBOARD SHORTCUTS -- */
+/* -- KEYBOARD NAVIGATION -- */
 window.addEventListener('keydown', e => {
   if (e.target.matches('input,textarea,select') || e.target.isContentEditable) return;
   const W = Math.max(1, Math.floor(S.window * 0.1));
   if (e.key === 'ArrowLeft')  { setHorizontalView(S.start - W, S.window); renderAll(); e.preventDefault(); }
   if (e.key === 'ArrowRight') { setHorizontalView(S.start + W, S.window); renderAll(); e.preventDefault(); }
-  if (e.key === 'ArrowUp')   { S.scale = clamp(S.scale / 1.1, SCALE_MIN, SCALE_MAX); renderAll(); e.preventDefault(); }
-  if (e.key === 'ArrowDown') { S.scale = clamp(S.scale * 1.1, SCALE_MIN, SCALE_MAX); renderAll(); e.preventDefault(); }
-  if (e.key === '-') {
-    const center = S.start + S.window / 2;
-    setHorizontalView(center - S.window * 1.1 / 2, S.window * 1.1);
-    renderAll(); e.preventDefault();
-  }
-  if (e.key === '=' || e.key === '+') {
-    const center = S.start + S.window / 2;
-    setHorizontalView(center - S.window / 1.1 / 2, S.window / 1.1);
-    renderAll(); e.preventDefault();
-  }
 });
 
 /* -- FFT PANEL RESIZE -- */
@@ -1139,13 +1136,7 @@ function updateMinimapViewport() {
     else if (e.key === 'ArrowRight') setHorizontalView(S.start + step, S.window);
     else if (e.key === 'Home') setHorizontalView(0, S.window);
     else if (e.key === 'End') setHorizontalView(S.rowCount - S.window, S.window);
-    else if (e.key === '-' || e.key === '_') {
-      const center = S.start + S.window / 2;
-      setHorizontalView(center - S.window * 1.15 / 2, S.window * 1.15);
-    } else if (e.key === '+' || e.key === '=') {
-      const center = S.start + S.window / 2;
-      setHorizontalView(center - S.window / 1.15 / 2, S.window / 1.15);
-    } else return;
+    else return;
     e.preventDefault();
     e.stopPropagation();
     renderAll();
@@ -1724,6 +1715,7 @@ if (document.fonts && document.fonts.ready) {
 }
 
 /* -- INIT -- */
+syncVerticalScaleControl();
 renderAll();
 
 
@@ -1746,7 +1738,7 @@ const steps = [
     target: () => document.querySelector('.topbar-controls'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>`,
     title: 'Plot controls',
-    body: '<strong>Sample Rate</strong> adds time labels. <strong>Auto</strong> resets Y zoom. <strong>Fit</strong> shows all data.',
+    body: '<strong>Sample Rate</strong> adds time labels. Use <strong>Scale</strong> to change waveform height, or open <strong>FFT</strong>.',
     arrow: 'top',
     padRem: .25,
   },

@@ -29,8 +29,14 @@
 
     <!-- Action buttons -->
     <div class="tb-btn-group">
-      <button class="tb-pill" id="autoBtn">Auto</button>
-      <button class="tb-pill" id="fitBtn">Fit</button>
+      <div class="tb-scale-control" role="group" aria-label="Vertical scale">
+        <button class="tb-scale-btn" id="scaleMinusBtn" type="button" aria-label="Decrease vertical scale" title="Decrease vertical scale">&minus;</button>
+        <div class="tb-scale-readout">
+          <span>Scale</span>
+          <output id="scaleValue" aria-live="polite">1&times;</output>
+        </div>
+        <button class="tb-scale-btn" id="scalePlusBtn" type="button" aria-label="Increase vertical scale" title="Increase vertical scale">+</button>
+      </div>
       <button class="tb-pill" id="fftBtn">FFT</button>
     </div>
 
