@@ -47,7 +47,7 @@ const S = {
 // everywhere else as el.someName instead of calling getElementById again.
 const $ = id => document.getElementById(id);
 const el = {
-  csvInput: $('csvInput'), uploadBtn: $('uploadBtn'), uploadText: $('uploadText'), themeBtn: $('themeBtn'),
+  csvInput: $('csvInput'), uploadBtn: $('uploadBtn'), uploadText: $('uploadText'), helpBtn: $('helpBtn'), themeBtn: $('themeBtn'),
   srInput: $('srInput'),
   scaleMinusBtn: $('scaleMinusBtn'), scalePlusBtn: $('scalePlusBtn'), scaleValue: $('scaleValue'), fftBtn: $('fftBtn'),
   fileNameDisplay: $('fileNameDisplay'), fileBadge: $('fileBadge'), fileBadgeRow: $('fileBadgeRow'), fileCloseBtn: $('fileCloseBtn'),
@@ -56,7 +56,8 @@ const el = {
   mainCanvas: $('mainCanvas'), emptyState: $('emptyState'), emptyTitle: $('emptyTitle'),
   emptyMessage: $('emptyMessage'), emptyUploadBtn: $('emptyUploadBtn'),
   minimapWrap: $('minimapWrap'), minimapTrack: $('minimapTrack'), minimapCanvas: $('minimapCanvas'),
-  minimapViewport: $('minimapViewport'), minimapLeftHandle: $('minimapLeftHandle'), minimapRightHandle: $('minimapRightHandle'),
+  minimapViewport: $('minimapViewport'), minimapWindowVisual: $('minimapWindowVisual'),
+  minimapLeftHandle: $('minimapLeftHandle'), minimapRightHandle: $('minimapRightHandle'),
   tlStart: $('tlStart'), tlEnd: $('tlEnd'),
   fftCol: $('fftCol'), fftHeader: $('fftHeader'), fftCanvas: $('fftCanvas'),
   fftChBar: $('fftChBar'), fftHandle: $('fftHandle'), fftClose: $('fftClose'),
@@ -125,14 +126,17 @@ function maxHorizontalWindow() {
   return Math.min(WIN_MAX, Math.max(1, S.rowCount));
 }
 function setHorizontalView(start, windowSize) {
+  const previousStart = S.start;
+  const previousWindow = S.window;
   const total = S.rowCount;
   if (!total) {
     S.start = 0;
     S.window = 1000;
-    return;
+    return S.start !== previousStart || S.window !== previousWindow;
   }
   S.window = clamp(Math.round(windowSize), minHorizontalWindow(), maxHorizontalWindow());
   S.start = clamp(Math.round(start), 0, Math.max(0, total - S.window));
+  return S.start !== previousStart || S.window !== previousWindow;
 }
 
 let minimapDirty = true;
@@ -546,6 +550,9 @@ function commitLoad(sr) {
   el.fileBadge.style.display = S.fileName ? 'flex' : 'none';
   el.fileBadgeRow.classList.toggle('has-file', Boolean(S.fileName));
   el.emptyState.style.display = 'none';
+  el.helpBtn.disabled = false;
+  el.helpBtn.setAttribute('aria-label', 'Show tour');
+  el.helpBtn.title = 'Show guide';
   document.dispatchEvent(new CustomEvent('csvplotter:data-loaded'));
 }
 
@@ -739,10 +746,14 @@ el.fileCloseBtn.addEventListener('click', () => {
   el.csvInput.value = '';
   el.fileBadge.style.display = 'none';
   el.fileBadgeRow.classList.remove('has-file');
+  el.helpBtn.disabled = true;
+  el.helpBtn.setAttribute('aria-label', 'Upload a CSV to view the guide');
+  el.helpBtn.title = 'Upload a CSV to view the guide';
   el.fftCol.classList.remove('open');
   invalidateMinimap();
   syncVerticalScaleControl();
   buildChannelList(); renderAll();
+  document.dispatchEvent(new CustomEvent('csvplotter:data-cleared'));
 });
 
 /* -- ACTION BUTTONS -- */
@@ -776,8 +787,9 @@ el.canvasWrap.addEventListener('wheel', e => {
     const oldW = S.window;
     const factor = Math.pow(1.003, e.deltaY);
     const center = S.start + oldW / 2;
-    setHorizontalView(center - oldW * factor / 2, oldW * factor);
-    renderWheelInteraction();
+    if (setHorizontalView(center - oldW * factor / 2, oldW * factor)) {
+      renderWheelInteraction();
+    }
     return;
   }
 
@@ -788,8 +800,9 @@ el.canvasWrap.addEventListener('wheel', e => {
   if (isHorizontal) {
     e.preventDefault();
     const step = Math.max(1, Math.round(Math.abs(e.deltaX) * S.window / wrapW));
-    setHorizontalView(S.start + (e.deltaX > 0 ? step : -step), S.window);
-    renderWheelInteraction();
+    if (setHorizontalView(S.start + (e.deltaX > 0 ? step : -step), S.window)) {
+      renderWheelInteraction();
+    }
     return;
   }
 
@@ -798,8 +811,9 @@ el.canvasWrap.addEventListener('wheel', e => {
 
   e.preventDefault();
   const step = Math.max(1, Math.round(Math.abs(e.deltaY) * S.window / wrapW));
-  setHorizontalView(S.start + (e.deltaY > 0 ? step : -step), S.window);
-  renderWheelInteraction();
+  if (setHorizontalView(S.start + (e.deltaY > 0 ? step : -step), S.window)) {
+    renderWheelInteraction();
+  }
 }, { passive: false });
 
 /* -- KEYBOARD NAVIGATION -- */
@@ -948,10 +962,19 @@ function minimapCompressedScale(trackWidth) {
   return { minimumWidth, largestCompressedWidth };
 }
 
-function minimapVisualWidth(total, trackWidth, windowSize) {
+function usesCompressedMinimap(total, trackWidth) {
+  const { minimumWidth } = minimapCompressedScale(trackWidth);
+  const largestExactWidth = Math.min(
+    trackWidth,
+    (maxHorizontalWindow() / total) * trackWidth,
+  );
+  return largestExactWidth < minimumWidth;
+}
+
+function minimapDisplayWidth(total, trackWidth, windowSize) {
   const exactWidth = Math.min(trackWidth, (windowSize / total) * trackWidth);
   const { minimumWidth, largestCompressedWidth } = minimapCompressedScale(trackWidth);
-  if (exactWidth >= minimumWidth || windowSize >= total) return exactWidth;
+  if (!usesCompressedMinimap(total, trackWidth) || windowSize >= total) return exactWidth;
 
   // A proportional window can be smaller than a screen pixel in a multi-hour
   // file. Use a logarithmic display scale in that case so every allowed zoom
@@ -965,6 +988,28 @@ function minimapVisualWidth(total, trackWidth, windowSize) {
   const compressedWidth = minimumWidth
     + clamp(progress, 0, 1) * (largestCompressedWidth - minimumWidth);
   return Math.max(exactWidth, compressedWidth);
+}
+
+function minimapGeometry(total, trackWidth, start, windowSize) {
+  const displayWidth = minimapDisplayWidth(total, trackWidth, windowSize);
+  const scrollRange = Math.max(0, total - windowSize);
+  const scrollProgress = scrollRange > 0 ? clamp(start / scrollRange, 0, 1) : 0;
+  const displayLeft = scrollProgress * Math.max(0, trackWidth - displayWidth);
+  const { minimumWidth } = minimapCompressedScale(trackWidth);
+  const hitWidth = Math.max(displayWidth, minimumWidth);
+  const hitLeft = clamp(
+    displayLeft - (hitWidth - displayWidth) / 2,
+    0,
+    Math.max(0, trackWidth - hitWidth),
+  );
+  return {
+    compressed: usesCompressedMinimap(total, trackWidth),
+    displayWidth,
+    displayLeft,
+    hitWidth,
+    hitLeft,
+    visualLeft: displayLeft - hitLeft,
+  };
 }
 
 function windowForCompressedMinimapWidth(visualWidth, trackWidth) {
@@ -996,14 +1041,17 @@ function updateMinimapViewport() {
   el.tlEnd.textContent = formatTimelinePosition(Math.max(0, total - 1));
 
   const trackW = Math.max(1, el.minimapTrack.clientWidth);
-  const exactLeft = (S.start / total) * trackW;
-  const exactWidth = Math.min(trackW, (S.window / total) * trackW);
-  const visualWidth = minimapVisualWidth(total, trackW, S.window);
-  const visualLeft = clamp(exactLeft - (visualWidth - exactWidth) / 2, 0, trackW - visualWidth);
+  const geometry = minimapGeometry(total, trackW, S.start, S.window);
 
-  el.minimapViewport.style.left = `${(visualLeft / trackW) * 100}%`;
-  el.minimapViewport.style.width = `${(visualWidth / trackW) * 100}%`;
-  el.minimapViewport.classList.toggle('narrow', visualWidth < rootRemPixels() * 5.5);
+  el.minimapViewport.style.left = `${(geometry.hitLeft / trackW) * 100}%`;
+  el.minimapViewport.style.width = `${(geometry.hitWidth / trackW) * 100}%`;
+  el.minimapWindowVisual.style.left = `${(geometry.visualLeft / geometry.hitWidth) * 100}%`;
+  el.minimapWindowVisual.style.width = `${(geometry.displayWidth / geometry.hitWidth) * 100}%`;
+  el.minimapViewport.style.setProperty(
+    '--minimap-visual-center',
+    `${((geometry.visualLeft + geometry.displayWidth / 2) / geometry.hitWidth) * 100}%`,
+  );
+  el.minimapViewport.classList.toggle('narrow', geometry.hitWidth < rootRemPixels() * 5.5);
 
   const end = Math.min(total, S.start + S.window);
   const rangeText = `${formatTimelinePosition(S.start)} – ${formatTimelinePosition(Math.max(S.start, end - 1))}`;
@@ -1016,16 +1064,23 @@ function updateMinimapViewport() {
 (function initMinimapControls() {
   let drag = null;
 
+  function pointerMode(event, rect) {
+    const geometry = minimapGeometry(S.rowCount, rect.width, S.start, S.window);
+    const pointerX = event.clientX - rect.left;
+    const leftDistance = Math.abs(pointerX - geometry.displayLeft);
+    const rightDistance = Math.abs(pointerX - (geometry.displayLeft + geometry.displayWidth));
+    const edgeRadius = rootRemPixels() * (event.pointerType === 'touch' ? 1.1 : 0.7);
+    if (Math.min(leftDistance, rightDistance) > edgeRadius) return 'pan';
+    return leftDistance <= rightDistance ? 'left' : 'right';
+  }
+
   function beginDrag(mode, e, owner) {
     if (!S.rowCount || e.button > 0) return;
     e.preventDefault();
     e.stopPropagation();
     const rect = el.minimapTrack.getBoundingClientRect();
     if (rect.width <= 0) return;
-    const exactWidth = (S.window / S.rowCount) * rect.width;
-    const visualWidth = minimapVisualWidth(S.rowCount, rect.width, S.window);
-    const { largestCompressedWidth } = minimapCompressedScale(rect.width);
-    const largestExactWidth = (maxHorizontalWindow() / S.rowCount) * rect.width;
+    const geometry = minimapGeometry(S.rowCount, rect.width, S.start, S.window);
     try { owner.setPointerCapture(e.pointerId); } catch (_) {}
     drag = {
       mode,
@@ -1035,12 +1090,12 @@ function updateMinimapViewport() {
       startWindow: S.window,
       rect,
       owner,
-      startVisualWidth: visualWidth,
-      compressedSizing: visualWidth > exactWidth + 0.5
-        && largestExactWidth <= largestCompressedWidth,
+      startVisualWidth: geometry.displayWidth,
+      startHitWidth: geometry.hitWidth,
+      compressedSizing: geometry.compressed,
     };
     clearTimeout(wheelSettleTimer);
-    interactiveRendering = true;
+    el.minimapViewport.style.cursor = mode === 'pan' ? 'grabbing' : 'ew-resize';
     el.minimapWrap.classList.add('is-dragging');
     document.body.style.userSelect = 'none';
   }
@@ -1049,10 +1104,15 @@ function updateMinimapViewport() {
     if (!drag || e.pointerId !== drag.pointerId || !S.rowCount) return;
     e.preventDefault();
     const total = S.rowCount;
-    const deltaSamples = Math.round(((e.clientX - drag.startX) / drag.rect.width) * total);
+    const pointerDelta = e.clientX - drag.startX;
+    const deltaSamples = Math.round((pointerDelta / drag.rect.width) * total);
+    let changed = false;
 
     if (drag.mode === 'pan') {
-      setHorizontalView(drag.startStart + deltaSamples, drag.startWindow);
+      const pixelTravel = Math.max(1, drag.rect.width - drag.startHitWidth);
+      const sampleTravel = Math.max(0, total - drag.startWindow);
+      const panDelta = Math.round((pointerDelta / pixelTravel) * sampleTravel);
+      changed = setHorizontalView(drag.startStart + panDelta, drag.startWindow);
     } else if (drag.mode === 'left') {
       const fixedEnd = drag.startStart + drag.startWindow;
       if (drag.compressedSizing) {
@@ -1062,8 +1122,8 @@ function updateMinimapViewport() {
           minHorizontalWindow(),
           Math.min(maxHorizontalWindow(), fixedEnd),
         );
-        setHorizontalView(fixedEnd - newWindow, newWindow);
-        renderInteractive();
+        changed = setHorizontalView(fixedEnd - newWindow, newWindow);
+        if (changed) renderInteractive();
         return;
       }
       const newStart = clamp(
@@ -1071,7 +1131,7 @@ function updateMinimapViewport() {
         Math.max(0, fixedEnd - maxHorizontalWindow()),
         fixedEnd - minHorizontalWindow(),
       );
-      setHorizontalView(newStart, fixedEnd - newStart);
+      changed = setHorizontalView(newStart, fixedEnd - newStart);
     } else if (drag.mode === 'right') {
       const maxWindowFromStart = Math.min(maxHorizontalWindow(), total - drag.startStart);
       if (drag.compressedSizing) {
@@ -1081,14 +1141,14 @@ function updateMinimapViewport() {
           minHorizontalWindow(),
           maxWindowFromStart,
         );
-        setHorizontalView(drag.startStart, newWindow);
-        renderInteractive();
+        changed = setHorizontalView(drag.startStart, newWindow);
+        if (changed) renderInteractive();
         return;
       }
       const newWindow = clamp(drag.startWindow + deltaSamples, minHorizontalWindow(), maxWindowFromStart);
-      setHorizontalView(drag.startStart, newWindow);
+      changed = setHorizontalView(drag.startStart, newWindow);
     }
-    renderInteractive();
+    if (changed) renderInteractive();
   }
 
   function endDrag(e) {
@@ -1096,15 +1156,24 @@ function updateMinimapViewport() {
     try { drag.owner.releasePointerCapture(drag.pointerId); } catch (_) {}
     drag = null;
     el.minimapWrap.classList.remove('is-dragging');
+    el.minimapViewport.style.cursor = '';
     document.body.style.userSelect = '';
     finishInteractiveRendering();
   }
 
   el.minimapViewport.addEventListener('pointerdown', e => {
-    const mode = e.target === el.minimapLeftHandle ? 'left'
-      : e.target === el.minimapRightHandle ? 'right'
-      : 'pan';
+    const rect = el.minimapTrack.getBoundingClientRect();
+    const mode = pointerMode(e, rect);
     beginDrag(mode, e, el.minimapViewport);
+  });
+
+  el.minimapViewport.addEventListener('pointermove', e => {
+    if (drag) return;
+    const rect = el.minimapTrack.getBoundingClientRect();
+    el.minimapViewport.style.cursor = pointerMode(e, rect) === 'pan' ? 'grab' : 'ew-resize';
+  });
+  el.minimapViewport.addEventListener('pointerleave', () => {
+    if (!drag) el.minimapViewport.style.cursor = '';
   });
 
   // Clicking the overview jumps the current window to that location and then
@@ -1113,14 +1182,17 @@ function updateMinimapViewport() {
     if (!S.rowCount || el.minimapViewport.contains(e.target)) return;
     const rect = el.minimapTrack.getBoundingClientRect();
     if (rect.width <= 0) return;
-    const ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
-    setHorizontalView(ratio * S.rowCount - S.window / 2, S.window);
+    const displayWidth = minimapDisplayWidth(S.rowCount, rect.width, S.window);
+    const viewportTravel = Math.max(1, rect.width - displayWidth);
+    const targetLeft = e.clientX - rect.left - displayWidth / 2;
+    const progress = clamp(targetLeft / viewportTravel, 0, 1);
+    const changed = setHorizontalView(progress * (S.rowCount - S.window), S.window);
     beginDrag('pan', e, el.minimapTrack);
     if (drag) {
       drag.startStart = S.start;
       drag.startWindow = S.window;
     }
-    renderInteractive();
+    if (changed) renderInteractive();
   });
 
   document.addEventListener('pointermove', moveDrag, { passive: false });
@@ -1313,12 +1385,30 @@ function drawMain() {
         Math.ceil((S.start + visibleCount) / level.bucketSize),
       );
       for (let bucket = firstBucket; bucket < lastBucket; bucket++) {
-        const low = level.min[bucket];
-        const high = level.max[bucket];
+        const bucketStart = bucket * level.bucketSize;
+        const bucketEnd = Math.min(s.data.length, bucketStart + level.bucketSize);
+        const visibleStart = Math.max(S.start, bucketStart);
+        const visibleEnd = Math.min(S.start + visibleCount, bucketEnd);
+        if (visibleStart >= visibleEnd) continue;
+
+        let low = level.min[bucket];
+        let high = level.max[bucket];
+        // Cached buckets at either boundary may contain off-screen samples.
+        // Recompute only those partial buckets from the exact visible slice.
+        if (visibleStart !== bucketStart || visibleEnd !== bucketEnd) {
+          low = Infinity;
+          high = -Infinity;
+          for (let sample = visibleStart; sample < visibleEnd; sample++) {
+            const value = s.data[sample];
+            if (!Number.isFinite(value)) continue;
+            if (value < low) low = value;
+            if (value > high) high = value;
+          }
+        }
         if (!Number.isFinite(low) || !Number.isFinite(high)) continue;
-        const sampleCenter = bucket * level.bucketSize + level.bucketSize / 2;
+        const sampleCenter = (visibleStart + visibleEnd - 1) / 2;
         const xRatio = (sampleCenter - S.start) / Math.max(1, visibleCount - 1);
-        const x = MARGIN.left + clamp(xRatio, 0, 1) * plotW;
+        const x = MARGIN.left + xRatio * plotW;
         const yTop = innerTop + (1 - (high - yMin) / Math.max(1e-12, yMax - yMin)) * innerH;
         const yBottom = innerTop + (1 - (low - yMin) / Math.max(1e-12, yMax - yMin)) * innerH;
         mainCtx.moveTo(x, yTop);
@@ -1766,14 +1856,6 @@ const steps = [
     arrow: 'top',
     padRem: .375,
   },
-  {
-    target: null,
-    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
-    title: 'Shortcuts',
-    body: '<kbd>&larr;</kbd> <kbd>&rarr;</kbd> move &nbsp;·&nbsp; <kbd>&uarr;</kbd> <kbd>&darr;</kbd> zoom Y<br><kbd>-</kbd> <kbd>+</kbd> zoom X<br><br>Press <strong>?</strong> to open this guide again.',
-    arrow: 'none',
-    padRem: 0,
-  },
 ];
 
 let cur = 0;
@@ -1924,6 +2006,7 @@ function showStep(idx) {
 }
 
 function startTour() {
+  if (!S.rowCount) return;
   active = true;
   cur = 0;
   showStep(0);
@@ -1954,6 +2037,10 @@ document.addEventListener('csvplotter:data-loaded', () => {
     autoTourScheduled = false;
     if (S.rowCount && !active && !localStorage.getItem(TOUR_SEEN_KEY)) startTour();
   }, 300);
+});
+
+document.addEventListener('csvplotter:data-cleared', () => {
+  if (active) endTour();
 });
 
 document.addEventListener('keydown', e => {

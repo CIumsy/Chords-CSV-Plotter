@@ -25,8 +25,6 @@
       <input id="srInput" class="tb-input" type="number" min="0" step="any" placeholder="250" aria-label="Sample rate in Hz"/>
     </div>
 
-    <div class="tb-sep"></div>
-
     <!-- Action buttons -->
     <div class="tb-btn-group">
       <div class="tb-scale-control" role="group" aria-label="Vertical scale">
@@ -40,14 +38,12 @@
       <button class="tb-pill" id="fftBtn">FFT</button>
     </div>
 
-    <div class="tb-sep"></div>
-
     <button class="upload-btn" id="uploadBtn" type="button" onclick="document.getElementById('csvInput').click()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <span class="upload-text" id="uploadText">Upload CSV</span>
     </button>
     <input id="csvInput" type="file" accept=".csv,text/csv" class="sr-only"/>
-    <button id="helpBtn" class="help-btn" aria-label="Show tour" title="Show guide">?</button>
+    <button id="helpBtn" class="help-btn" aria-label="Upload a CSV to view the guide" title="Upload a CSV to view the guide" disabled>?</button>
     <button id="themeBtn" class="icon-btn" aria-label="Toggle theme"></button>
   </div>
 </header>
@@ -118,9 +114,11 @@
               aria-valuemax="0"
               aria-valuenow="0"
             >
-              <span class="minimap-handle minimap-handle--left" id="minimapLeftHandle" aria-hidden="true"></span>
+              <span class="minimap-window-visual" id="minimapWindowVisual" aria-hidden="true">
+                <span class="minimap-handle minimap-handle--left" id="minimapLeftHandle"></span>
+                <span class="minimap-handle minimap-handle--right" id="minimapRightHandle"></span>
+              </span>
               <span class="minimap-window-grip" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span class="minimap-handle minimap-handle--right" id="minimapRightHandle" aria-hidden="true"></span>
             </div>
           </div>
         </div>
