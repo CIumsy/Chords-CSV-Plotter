@@ -4,7 +4,7 @@
 //   2. THEME TOGGLE - light/dark switch
 //   3. CSV LOADING - parsing a file and the sampling-rate prompt
 //   4. CHANNEL LISTS - sidebar checkboxes and FFT channel picker
-//   5. CONTROLS - SPS field, buttons, scrolling, keyboard, FFT resize
+//   5. CONTROLS - sample-rate field, buttons, scrolling, keyboard, FFT resize
 //   6. MAIN PLOT RENDERING - draws the waveform canvas
 //   7. FFT - frequency-spectrum math and drawing
 //   8. RENDER LOOP & STARTUP - runs the draw functions above and starts the app
@@ -56,7 +56,7 @@ const el = {
   tlStart: $('tlStart'), tlEnd: $('tlEnd'),
   fftCol: $('fftCol'), fftHeader: $('fftHeader'), fftCanvas: $('fftCanvas'),
   fftChBar: $('fftChBar'), fftHandle: $('fftHandle'), fftClose: $('fftClose'),
-  sidebar: $('sidebar'),
+  sidebar: $('sidebar'), sidebarToggle: $('sidebarToggle'),
   mainArea: $('mainArea'),
   modalBackdrop: $('modalBackdrop'), modalSrInput: $('modalSrInput'),
   modalSkip: $('modalSkip'), modalSelect: $('modalSelect'),
@@ -77,6 +77,38 @@ const fmt   = (v, d=3) => Number.isFinite(v) ? v.toFixed(d) : '-';
 const fmtN  = v => Number.isFinite(v) ? Math.round(v).toLocaleString() : '0';
 const fmtLbl = v => { if (!Number.isFinite(v)) return '-'; if (v === 0) return '0'; return v.toPrecision(3); };
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function rootRemPixels() { return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16; }
+function cssRem(valueInPixels) { return `${valueInPixels / rootRemPixels()}rem`; }
+
+// Canvas backing stores use physical screen pixels, while all drawing code
+// uses CSS coordinates. Keeping the exact effective scale prevents the browser
+// from resampling text and hairlines on fractional-DPR or zoomed displays.
+const canvasMetrics = new WeakMap();
+function canvasScale(ctx) {
+  return canvasMetrics.get(ctx.canvas) || { x: 1, y: 1 };
+}
+function snapDeviceX(ctx, value) {
+  const scale = canvasScale(ctx).x;
+  return Math.round(value * scale) / scale;
+}
+function snapDeviceY(ctx, value) {
+  const scale = canvasScale(ctx).y;
+  return Math.round(value * scale) / scale;
+}
+function snapStrokeX(ctx, value, width = ctx.lineWidth) {
+  const scale = canvasScale(ctx).x;
+  const physicalWidth = width * scale;
+  return (Math.round(value * scale - physicalWidth / 2) + physicalWidth / 2) / scale;
+}
+function snapStrokeY(ctx, value, width = ctx.lineWidth) {
+  const scale = canvasScale(ctx).y;
+  const physicalWidth = width * scale;
+  return (Math.round(value * scale - physicalWidth / 2) + physicalWidth / 2) / scale;
+}
+function useCrispHairline(ctx) {
+  const scale = canvasScale(ctx).x;
+  ctx.lineWidth = Math.max(1, Math.round(scale)) / scale;
+}
 
 
 // Horizontal view changes all pass through one function so pan/zoom controls,
@@ -188,6 +220,7 @@ function commitLoad(sr) {
   el.fileBadge.style.display = S.fileName ? 'flex' : 'none';
   el.fileBadgeRow.classList.toggle('has-file', Boolean(S.fileName));
   el.emptyState.style.display = 'none';
+  document.dispatchEvent(new CustomEvent('csvplotter:data-loaded'));
 }
 
 el.modalSkip.addEventListener('click', () => {
@@ -306,11 +339,21 @@ function buildFftChannelList() {
 }
 
 
-/* ---- CONTROLS (SPS field, buttons, scroll, keyboard, FFT panel resize) ---- */
+/* ---- CONTROLS (sample-rate field, buttons, scroll, keyboard, FFT panel resize) ---- */
 /* -- SAMPLING RATE -- */
 el.srInput.addEventListener('input', () => {
   const n = parseFloat(el.srInput.value);
   S.sampleRate = n > 0 ? n : null;
+  renderAll();
+});
+
+/* -- CHANNEL SIDEBAR TOGGLE -- */
+el.sidebarToggle.addEventListener('click', () => {
+  const expanded = el.sidebar.classList.toggle('expanded');
+  el.sidebarToggle.setAttribute('aria-expanded', String(expanded));
+  const label = expanded ? 'Collapse channels' : 'Expand channels';
+  el.sidebarToggle.setAttribute('aria-label', label);
+  el.sidebarToggle.title = label;
   renderAll();
 });
 
@@ -420,7 +463,7 @@ window.addEventListener('keydown', e => {
   function applyDx(clientX) {
     const dx = startX - clientX;
     const minFW = parseInt(getComputedStyle(el.fftCol).minWidth) || 180;
-    el.fftCol.style.width = clamp(startW + dx, minFW, fftMaxW()) + 'px';
+    el.fftCol.style.width = cssRem(clamp(startW + dx, minFW, fftMaxW()));
     renderAll();
   }
 
@@ -462,9 +505,9 @@ window.addEventListener('keydown', e => {
 /* -- SCRUBBER MINIMAP (full-data overview + pan + edge-resize zoom) -- */
 function sizeMinimapCanvas() {
   const rect = el.minimapTrack.getBoundingClientRect();
-  const cssW = Math.max(1, Math.floor(rect.width));
-  const cssH = Math.max(1, Math.floor(rect.height));
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = Math.max(1, rect.width);
+  const cssH = Math.max(1, rect.height);
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
   const pixelW = Math.max(1, Math.round(cssW * dpr));
   const pixelH = Math.max(1, Math.round(cssH * dpr));
   const changed = el.minimapCanvas.width !== pixelW || el.minimapCanvas.height !== pixelH;
@@ -473,7 +516,9 @@ function sizeMinimapCanvas() {
     el.minimapCanvas.height = pixelH;
   }
   const ctx = el.minimapCanvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const scaleX = pixelW / cssW, scaleY = pixelH / cssH;
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+  canvasMetrics.set(el.minimapCanvas, { x: scaleX, y: scaleY });
   return { ctx, width: cssW, height: cssH, changed };
 }
 
@@ -557,8 +602,8 @@ function updateMinimapViewport() {
   const visualWidth = Math.max(exactWidth, minVisualWidth);
   const visualLeft = clamp(exactLeft - (visualWidth - exactWidth) / 2, 0, trackW - visualWidth);
 
-  el.minimapViewport.style.left = visualLeft + 'px';
-  el.minimapViewport.style.width = visualWidth + 'px';
+  el.minimapViewport.style.left = cssRem(visualLeft);
+  el.minimapViewport.style.width = cssRem(visualWidth);
   el.minimapViewport.classList.toggle('narrow', visualWidth < 54);
 
   const end = Math.min(total, S.start + S.window);
@@ -672,14 +717,15 @@ function updateMinimapViewport() {
 
 /* ---- MAIN PLOT RENDERING (draws the multi-channel waveform canvas) ---- */
 /* -- CANVAS SIZING (device-pixel-ratio aware) -- */
-const DPR = Math.min(window.devicePixelRatio || 1, 2);
-
 function sizeCanvas(canvas, w, h) {
-  const pw = Math.max(10, Math.round(w * DPR));
-  const ph = Math.max(10, Math.round(h * DPR));
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const pw = Math.max(10, Math.round(w * dpr));
+  const ph = Math.max(10, Math.round(h * dpr));
   if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
   const ctx = canvas.getContext('2d');
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const scaleX = pw / w, scaleY = ph / h;
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+  canvasMetrics.set(canvas, { x: scaleX, y: scaleY });
   return { w, h };
 }
 
@@ -707,6 +753,10 @@ function drawMain() {
   const N = S.numericIdx.filter(i => S.selected.has(i)).length;
   const rows = windowRows();
 
+  // The plot's bottom-axis gap and the minimap's outer spacing use the same
+  // responsive inset, keeping the axis-to-minimap distance visually uniform.
+  MARGIN.bottom = window.matchMedia('(max-width: 42.5em)').matches ? 8 : 12;
+
   const wrapH = el.canvasWrap.getBoundingClientRect().height || 400;
   const wrapW = el.canvasWrap.getBoundingClientRect().width  || 600;
   const naturalH = N <= 1 ? wrapH : Math.max(wrapH, N * PREF_BAND + MARGIN.top + MARGIN.bottom);
@@ -714,7 +764,7 @@ function drawMain() {
 
   el.canvasScroll.style.overflowY = useScroll ? 'auto' : 'hidden';
   el.canvasScroll.style.height    = '100%';
-  el.mainCanvas.style.height      = useScroll ? naturalH + 'px' : '100%';
+  el.mainCanvas.style.height      = useScroll ? cssRem(naturalH) : '100%';
 
   const canvasW = wrapW;
   const canvasH = useScroll ? naturalH : wrapH;
@@ -726,7 +776,7 @@ function drawMain() {
   mainCtx.fillRect(0, 0, canvasW, canvasH);
 
   // Dynamic left margin: measure widest Y-axis label across visible channels
-  mainCtx.font = `10px ${cssVar('--mono')}`;
+  mainCtx.font = `.625rem ${cssVar('--mono')}`;
   let dynLeft = 44;
   for (const ci of S.numericIdx) {
     if (!S.selected.has(ci)) continue;
@@ -740,7 +790,6 @@ function drawMain() {
     }
   }
   MARGIN.left = Math.min(dynLeft, 90);
-  MARGIN.bottom = S.sampleRate ? 32 : 8;
 
   const plotW = Math.max(10, canvasW - MARGIN.left - MARGIN.right);
   const plotH = Math.max(10, canvasH - MARGIN.top  - MARGIN.bottom);
@@ -759,9 +808,9 @@ function drawMain() {
   const gridColor = cssVar('--grid');
   mainCtx.save();
   mainCtx.strokeStyle = gridColor;
-  mainCtx.lineWidth = 1;
+  useCrispHairline(mainCtx);
   for (let i = 0; i <= 8; i++) {
-    const x = MARGIN.left + (i / 8) * plotW;
+    const x = snapStrokeX(mainCtx, MARGIN.left + (i / 8) * plotW);
     mainCtx.beginPath(); mainCtx.moveTo(x, MARGIN.top); mainCtx.lineTo(x, MARGIN.top + plotH); mainCtx.stroke();
   }
   mainCtx.restore();
@@ -783,24 +832,26 @@ function drawMain() {
     if (si > 0) {
       mainCtx.save();
       mainCtx.strokeStyle = cssVar('--divider');
-      mainCtx.lineWidth = 1;
-      mainCtx.beginPath(); mainCtx.moveTo(MARGIN.left, bandTop); mainCtx.lineTo(MARGIN.left + plotW, bandTop); mainCtx.stroke();
+      useCrispHairline(mainCtx);
+      const dividerY = snapStrokeY(mainCtx, bandTop);
+      mainCtx.beginPath(); mainCtx.moveTo(MARGIN.left, dividerY); mainCtx.lineTo(MARGIN.left + plotW, dividerY); mainCtx.stroke();
       mainCtx.restore();
     }
 
     mainCtx.save();
     mainCtx.fillStyle = s.color;
-    mainCtx.font = `600 11px ${cssVar('--font')}`;
-    mainCtx.fillText(s.name, MARGIN.left + 6, bandTop + 16);
+    mainCtx.font = `600 .6875rem ${cssVar('--font')}`;
+    mainCtx.fillText(s.name, snapDeviceX(mainCtx, MARGIN.left + 6), snapDeviceY(mainCtx, bandTop + 16));
     mainCtx.restore();
 
     mainCtx.save();
     mainCtx.fillStyle = cssVar('--muted');
-    mainCtx.font = `10px ${cssVar('--mono')}`;
+    mainCtx.font = `.625rem ${cssVar('--mono')}`;
     mainCtx.textAlign = 'right';
-    mainCtx.fillText(fmtLbl(hi),     MARGIN.left - 4, innerTop + 8);
-    mainCtx.fillText(fmtLbl(center), MARGIN.left - 4, innerTop + innerH / 2 + 4);
-    mainCtx.fillText(fmtLbl(lo),     MARGIN.left - 4, innerTop + innerH);
+    const labelX = snapDeviceX(mainCtx, MARGIN.left - 4);
+    mainCtx.fillText(fmtLbl(hi),     labelX, snapDeviceY(mainCtx, innerTop + 8));
+    mainCtx.fillText(fmtLbl(center), labelX, snapDeviceY(mainCtx, innerTop + innerH / 2 + 4));
+    mainCtx.fillText(fmtLbl(lo),     labelX, snapDeviceY(mainCtx, innerTop + innerH));
     mainCtx.restore();
 
     mainCtx.save();
@@ -827,11 +878,13 @@ function drawMain() {
 
   mainCtx.save();
   mainCtx.strokeStyle = cssVar('--axis-line');
-  mainCtx.lineWidth = 1;
+  useCrispHairline(mainCtx);
+  const axisX = snapStrokeX(mainCtx, MARGIN.left);
+  const axisY = snapStrokeY(mainCtx, MARGIN.top + plotH);
   mainCtx.beginPath();
-  mainCtx.moveTo(MARGIN.left, MARGIN.top);
-  mainCtx.lineTo(MARGIN.left, MARGIN.top + plotH);
-  mainCtx.lineTo(MARGIN.left + plotW, MARGIN.top + plotH);
+  mainCtx.moveTo(axisX, MARGIN.top);
+  mainCtx.lineTo(axisX, axisY);
+  mainCtx.lineTo(MARGIN.left + plotW, axisY);
   mainCtx.stroke();
   mainCtx.restore();
 
@@ -844,12 +897,12 @@ function drawPointAxis(ctx, plotW, rowCount) {
   if (!rowCount) return;
   ctx.save();
   ctx.fillStyle = cssVar('--muted');
-  ctx.font = `10px ${cssVar('--mono')}`;
+  ctx.font = `.625rem ${cssVar('--mono')}`;
   ctx.textAlign = 'center';
   for (let i = 0; i <= 8; i++) {
-    const x = MARGIN.left + (i / 8) * plotW;
+    const x = snapDeviceX(ctx, MARGIN.left + (i / 8) * plotW);
     const sIdx = S.start + Math.round((i / 8) * Math.max(0, rowCount - 1));
-    ctx.fillText(fmtN(sIdx), x, MARGIN.top - 5);
+    ctx.fillText(fmtN(sIdx), x, snapDeviceY(ctx, MARGIN.top - 5));
   }
   ctx.restore();
 }
@@ -859,12 +912,12 @@ function drawTimeAxis(ctx, cw, ch, plotW, rowCount) {
   if (!S.sampleRate) return;
   ctx.save();
   ctx.fillStyle = cssVar('--muted');
-  ctx.font = `10px ${cssVar('--mono')}`;
+  ctx.font = `${MARGIN.bottom <= 8 ? '.5rem' : '.625rem'} ${cssVar('--mono')}`;
   ctx.textAlign = 'center';
   for (let i = 0; i <= 8; i++) {
-    const x = MARGIN.left + (i / 8) * plotW;
+    const x = snapDeviceX(ctx, MARGIN.left + (i / 8) * plotW);
     const sIdx = S.start + Math.round((i / 8) * Math.max(0, rowCount - 1));
-    ctx.fillText(fmt(sIdx / S.sampleRate, 2) + 's', x, ch - 8);
+    ctx.fillText(fmt(sIdx / S.sampleRate, 2) + 's', x, snapDeviceY(ctx, ch - 2));
   }
   ctx.restore();
 }
@@ -950,7 +1003,7 @@ function drawFFT() {
   globalMax = globalMax || 1;
 
   // Dynamic left margin based on widest Y-label
-  fftCtx.font = `10px ${cssVar('--mono')}`;
+  fftCtx.font = `.625rem ${cssVar('--mono')}`;
   let maxLabelW = 0;
   for (let i = 0; i <= 4; i++) {
     const w = fftCtx.measureText(fmtLbl(globalMax * (1 - i / 4))).width;
@@ -963,13 +1016,13 @@ function drawFFT() {
   // Grid
   fftCtx.save();
   fftCtx.strokeStyle = cssVar('--grid');
-  fftCtx.lineWidth = 1;
+  useCrispHairline(fftCtx);
   for (let i = 0; i <= 5; i++) {
-    const y = M.top + (i / 5) * pH;
+    const y = snapStrokeY(fftCtx, M.top + (i / 5) * pH);
     fftCtx.beginPath(); fftCtx.moveTo(M.left, y); fftCtx.lineTo(M.left + pW, y); fftCtx.stroke();
   }
   for (let i = 0; i <= 5; i++) {
-    const x = M.left + (i / 5) * pW;
+    const x = snapStrokeX(fftCtx, M.left + (i / 5) * pW);
     fftCtx.beginPath(); fftCtx.moveTo(x, M.top); fftCtx.lineTo(x, M.top + pH); fftCtx.stroke();
   }
   fftCtx.restore();
@@ -978,10 +1031,11 @@ function drawFFT() {
     el.fftHeader.textContent = 'FFT: select a channel above';
     fftCtx.save();
     fftCtx.fillStyle = cssVar('--faint');
-    fftCtx.font = `12px ${cssVar('--font')}`;
+    fftCtx.font = `.75rem ${cssVar('--font')}`;
     fftCtx.textAlign = 'center';
-    fftCtx.fillText('No channel', M.left + pW / 2, M.top + pH / 2 - 8);
-    fftCtx.fillText('selected above', M.left + pW / 2, M.top + pH / 2 + 10);
+    const emptyX = snapDeviceX(fftCtx, M.left + pW / 2);
+    fftCtx.fillText('No channel', emptyX, snapDeviceY(fftCtx, M.top + pH / 2 - 8));
+    fftCtx.fillText('selected above', emptyX, snapDeviceY(fftCtx, M.top + pH / 2 + 10));
     fftCtx.restore();
     drawFFTAxes(fftCtx, M, pW, pH, W, H, maxFreq, globalMax);
     return;
@@ -1022,7 +1076,7 @@ function drawFFT() {
     fftCtx.lineTo(legendX - 6, legendY + 4);
     fftCtx.stroke();
     fftCtx.fillStyle = s.color;
-    fftCtx.font = `600 9px ${cssVar('--font')}`;
+    fftCtx.font = `600 .5625rem ${cssVar('--font')}`;
     fftCtx.textAlign = 'right';
     const label = s.name.length > 10 ? s.name.slice(0, 9) + '…' : s.name;
     fftCtx.fillText(label, legendX - 30, legendY + 8);
@@ -1039,29 +1093,31 @@ function drawFFT() {
 function drawFFTAxes(ctx, M, pW, pH, W, H, maxFreq, globalMax) {
   ctx.save();
   ctx.strokeStyle = cssVar('--axis-line');
-  ctx.lineWidth = 1;
+  useCrispHairline(ctx);
+  const axisX = snapStrokeX(ctx, M.left);
+  const axisY = snapStrokeY(ctx, M.top + pH);
   ctx.beginPath();
-  ctx.moveTo(M.left, M.top); ctx.lineTo(M.left, M.top + pH); ctx.lineTo(M.left + pW, M.top + pH);
+  ctx.moveTo(axisX, M.top); ctx.lineTo(axisX, axisY); ctx.lineTo(M.left + pW, axisY);
   ctx.stroke();
 
   ctx.fillStyle = cssVar('--muted');
-  ctx.font = `10px ${cssVar('--mono')}`;
+  ctx.font = `.625rem ${cssVar('--mono')}`;
 
   // Y labels (magnitude)
   ctx.textAlign = 'right';
   for (let i = 0; i <= 4; i++) {
-    const y = M.top + (i / 4) * pH;
-    ctx.fillText(fmtLbl(globalMax * (1 - i / 4)), M.left - 3, y + 4);
+    const y = snapDeviceY(ctx, M.top + (i / 4) * pH + 4);
+    ctx.fillText(fmtLbl(globalMax * (1 - i / 4)), snapDeviceX(ctx, M.left - 3), y);
   }
 
   // X labels (frequency)
   ctx.textAlign = 'center';
   const tickCount = Math.min(6, Math.floor(pW / 40));
   for (let i = 0; i <= tickCount; i++) {
-    const x = M.left + (i / tickCount) * pW;
+    const x = snapDeviceX(ctx, M.left + (i / tickCount) * pW);
     const freqVal = maxFreq * i / tickCount;
     const label = S.sampleRate ? Math.round(freqVal) + 'Hz' : fmt(freqVal, 1);
-    ctx.fillText(label, x, H - 8);
+    ctx.fillText(label, x, snapDeviceY(ctx, H - 8));
   }
   ctx.restore();
 }
@@ -1103,11 +1159,41 @@ window.addEventListener('resize', () => {
     const maxFW = Math.min(maW * 0.55, maW - minFW - 40);
     if (maxFW > 0) {
       const currFW = el.fftCol.getBoundingClientRect().width;
-      if (currFW > maxFW) el.fftCol.style.width = maxFW + 'px';
+      if (currFW > maxFW) el.fftCol.style.width = cssRem(maxFW);
     }
   }
   renderAll();
 }, { passive: true });
+
+// A window can move between displays without changing its CSS dimensions.
+// Re-register after every density change so the backing stores are rebuilt.
+function watchDevicePixelRatio() {
+  const densityQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+  const handleDensityChange = () => {
+    invalidateMinimap();
+    renderAll();
+    watchDevicePixelRatio();
+  };
+  if (densityQuery.addEventListener) {
+    densityQuery.addEventListener('change', handleDensityChange, { once: true });
+  } else {
+    const legacyDensityChange = () => {
+      densityQuery.removeListener(legacyDensityChange);
+      handleDensityChange();
+    };
+    densityQuery.addListener(legacyDensityChange);
+  }
+}
+watchDevicePixelRatio();
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', renderAll, { passive: true });
+}
+
+// Canvas text must be redrawn once the requested web fonts replace fallbacks.
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(renderAll);
+}
 
 /* -- INIT -- */
 renderAll();
@@ -1117,69 +1203,62 @@ renderAll();
 (function() {
 'use strict';
 
-const TOUR_SEEN_KEY = 'csvplotter_tour_seen';
+const TOUR_SEEN_KEY = 'csvplotter_data_tour_seen_v1';
 
 const steps = [
   {
     target: () => document.querySelector('.upload-btn'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
-    title: 'Welcome to Chords CSV Plotter',
-    body: 'Start by uploading a CSV file. Enter a sampling rate when prompted, or skip it.',
+    title: 'CSV files',
+    body: 'Use this button to load or replace a CSV file.',
     arrow: 'top',
-    pad: 6,
+    padRem: .375,
   },
   {
     target: () => document.querySelector('.topbar-controls'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>`,
-    title: 'Controls',
-    body: '<strong>SPS</strong> shows real timestamps on the x-axis. <strong>Auto</strong> resets vertical zoom, <strong>Fit</strong> resets horizontal zoom.',
+    title: 'Plot controls',
+    body: '<strong>Sample Rate</strong> adds time labels. <strong>Auto</strong> resets Y zoom. <strong>Fit</strong> shows all data.',
     arrow: 'top',
-    pad: 4,
-  },
-  {
-    target: () => document.getElementById('canvasWrap'),
-    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 12l3-3 4 4 5-6"/></svg>`,
-    title: 'Zooming',
-    body: 'Pinch or Ctrl+scroll on the plot to zoom horizontally. Use the arrow keys to scroll and zoom vertically.',
-    arrow: 'top',
-    pad: 4,
+    padRem: .25,
   },
   {
     target: () => document.getElementById('sidebar'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
     title: 'Channels',
-    body: 'Hover the left strip to reveal all channels. Toggle each one on or off — each gets its own color and autoscaled lane.',
+    body: 'Open <strong>Channels</strong>, then choose which signals to plot.',
     arrow: 'right',
-    pad: 4,
+    padRem: .25,
   },
   {
     target: () => document.querySelector('.timeline'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
-    title: 'Navigating the data',
-    body: 'The bottom minimap shows the full file. Drag the highlighted window to scroll, click anywhere to jump, or drag either edge to zoom horizontally.',
+    title: 'Minimap',
+    body: 'Drag the window to move. Drag its edges to zoom. Click anywhere to jump.',
     arrow: 'top',
-    pad: 4,
+    padRem: .25,
   },
   {
     target: () => document.getElementById('fftBtn'),
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
-    title: 'FFT viewer',
-    body: 'Click <strong>FFT</strong> for a live frequency spectrum of the visible window. Pick channels using the pills at the top of the panel.',
+    title: 'Frequency view',
+    body: 'Click <strong>FFT</strong> to view frequencies in the visible data.',
     arrow: 'top',
-    pad: 6,
+    padRem: .375,
   },
   {
     target: null,
     icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
     title: 'Shortcuts',
-    body: `<kbd>←</kbd> <kbd>→</kbd> scroll &nbsp;·&nbsp; <kbd>↑</kbd> <kbd>↓</kbd> Zoom Y<br><kbd>-</kbd> zoom out X &nbsp;·&nbsp; <kbd>+</kbd> zoom in X &nbsp;·&nbsp; pinch to zoom X<br><br>You can also focus the minimap window and use the arrow keys. Press <strong>?</strong> anytime to replay this tour.`,
+    body: '<kbd>&larr;</kbd> <kbd>&rarr;</kbd> move &nbsp;·&nbsp; <kbd>&uarr;</kbd> <kbd>&darr;</kbd> zoom Y<br><kbd>-</kbd> <kbd>+</kbd> zoom X<br><br>Press <strong>?</strong> to open this guide again.',
     arrow: 'none',
-    pad: 0,
+    padRem: 0,
   },
 ];
 
 let cur = 0;
 let active = false;
+let autoTourScheduled = false;
 
 const tDim   = document.getElementById('tourDim');
 const tHL    = document.getElementById('tourHL');
@@ -1209,60 +1288,78 @@ function getTargetRect(step) {
   const el = step.target();
   if (!el) return null;
   const r = el.getBoundingClientRect();
-  const pad = step.pad || 0;
+  if (r.width <= 0 || r.height <= 0) return null;
+  const rem = rootRemPixels();
+  const pad = (step.padRem || 0) * rem;
+  let top = r.top, left = r.left, width = r.width, height = r.height;
+
   return {
-    top: r.top - pad,
-    left: r.left - pad,
-    width: r.width + pad * 2,
-    height: r.height + pad * 2,
-    bottom: r.bottom + pad,
-    right: r.right + pad,
-    cx: r.left + r.width / 2,
-    cy: r.top + r.height / 2,
+    top: top - pad,
+    left: left - pad,
+    width: width + pad * 2,
+    height: height + pad * 2,
+    bottom: top + height + pad,
+    right: left + width + pad,
+    cx: left + width / 2,
+    cy: top + height / 2,
   };
 }
 
-const CARD_W = 300, CARD_H = 230, MARGIN = 16;
+const TOUR_EDGE_REM = 1, TOUR_GAP_REM = 1;
 
 function positionCard(rect, arrow) {
   const vw = window.innerWidth, vh = window.innerHeight;
-  let top, left, arrowDir = arrow;
+  const rem = rootRemPixels();
+  const edge = TOUR_EDGE_REM * rem, gap = TOUR_GAP_REM * rem;
+  const measured = tCard.getBoundingClientRect();
+  const cardW = measured.width, cardH = measured.height;
+  const clampX = value => Math.max(edge, Math.min(vw - cardW - edge, value));
+  const clampY = value => Math.max(edge, Math.min(vh - cardH - edge, value));
+  let top, left, arrowDir = 'none', fits = true;
 
   if (!rect || arrow === 'none') {
-    top  = (vh - CARD_H) / 2;
-    left = (vw - CARD_W) / 2;
-    arrowDir = 'none';
+    top = clampY((vh - cardH) / 2);
+    left = clampX((vw - cardW) / 2);
   } else {
-    const spaceRight  = vw - rect.right;
-    const spaceLeft   = rect.left;
-    const spaceBottom = vh - rect.bottom;
-    const spaceTop    = rect.top;
+    const candidates = {
+      right: {
+        left: rect.right + gap, top: clampY(rect.cy - cardH / 2), arrow: 'left',
+        fits: rect.right + gap + cardW <= vw - edge,
+      },
+      left: {
+        left: rect.left - gap - cardW, top: clampY(rect.cy - cardH / 2), arrow: 'right',
+        fits: rect.left - gap - cardW >= edge,
+      },
+      bottom: {
+        left: clampX(rect.cx - cardW / 2), top: rect.bottom + gap, arrow: 'top',
+        fits: rect.bottom + gap + cardH <= vh - edge,
+      },
+      top: {
+        left: clampX(rect.cx - cardW / 2), top: rect.top - gap - cardH, arrow: 'bottom',
+        fits: rect.top - gap - cardH >= edge,
+      },
+    };
+    const preferred = arrow === 'top' ? 'bottom' : arrow === 'bottom' ? 'top' : arrow;
+    const order = [preferred, 'right', 'left', 'bottom', 'top']
+      .filter((side, i, all) => all.indexOf(side) === i);
+    const chosen = order.map(side => candidates[side]).find(candidate => candidate && candidate.fits);
 
-    if (arrow === 'right' || (spaceRight >= CARD_W + MARGIN + 12)) {
-      left = rect.right + 12;
-      top  = Math.max(MARGIN, Math.min(vh - CARD_H - MARGIN, rect.cy - CARD_H / 2));
-      arrowDir = 'left';
-    } else if (spaceLeft >= CARD_W + MARGIN + 12) {
-      left = rect.left - CARD_W - 12;
-      top  = Math.max(MARGIN, Math.min(vh - CARD_H - MARGIN, rect.cy - CARD_H / 2));
-      arrowDir = 'right';
-    } else if (spaceBottom >= CARD_H + MARGIN + 12) {
-      top  = rect.bottom + 12;
-      left = Math.max(MARGIN, Math.min(vw - CARD_W - MARGIN, rect.cx - CARD_W / 2));
-      arrowDir = 'top';
+    if (chosen) {
+      top = chosen.top;
+      left = chosen.left;
+      arrowDir = chosen.arrow;
     } else {
-      top  = rect.top - CARD_H - 12;
-      left = Math.max(MARGIN, Math.min(vw - CARD_W - MARGIN, rect.cx - CARD_W / 2));
-      arrowDir = 'bottom';
+      // Never cover a highlighted control on a viewport too small to fit both.
+      top = clampY((vh - cardH) / 2);
+      left = clampX((vw - cardW) / 2);
+      fits = false;
     }
-
-    top  = Math.max(MARGIN, Math.min(vh - CARD_H - MARGIN, top));
-    left = Math.max(MARGIN, Math.min(vw - CARD_W - MARGIN, left));
   }
 
-  tCard.style.top  = top + 'px';
-  tCard.style.left = left + 'px';
+  tCard.style.top  = cssRem(top);
+  tCard.style.left = cssRem(left);
   tCard.setAttribute('data-arrow', arrowDir);
+  return fits;
 }
 
 function showStep(idx) {
@@ -1284,10 +1381,10 @@ function showStep(idx) {
     const vw = window.innerWidth, vh = window.innerHeight;
     const hl = Math.max(0, rect.left);
     const ht = Math.max(0, rect.top);
-    tHL.style.left   = hl + 'px';
-    tHL.style.top    = ht + 'px';
-    tHL.style.width  = Math.max(0, Math.min(rect.right,  vw) - hl) + 'px';
-    tHL.style.height = Math.max(0, Math.min(rect.bottom, vh) - ht) + 'px';
+    tHL.style.left   = cssRem(hl);
+    tHL.style.top    = cssRem(ht);
+    tHL.style.width  = cssRem(Math.max(0, Math.min(rect.right,  vw) - hl));
+    tHL.style.height = cssRem(Math.max(0, Math.min(rect.bottom, vh) - ht));
     tHL.classList.add('visible');
     tDim.classList.remove('visible');
   } else {
@@ -1295,7 +1392,11 @@ function showStep(idx) {
     tDim.classList.add('visible');
   }
 
-  positionCard(rect, step.arrow);
+  const cardFits = positionCard(rect, step.arrow);
+  if (rect && !cardFits) {
+    tHL.classList.remove('visible');
+    tDim.classList.add('visible');
+  }
 
   if (!tCard.classList.contains('visible')) {
     tCard.classList.add('visible');
@@ -1325,6 +1426,16 @@ tClose.addEventListener('click', endTour);
 tSkip.addEventListener('click',  endTour);
 helpBtn.addEventListener('click', startTour);
 
+document.addEventListener('csvplotter:data-loaded', () => {
+  if (active || autoTourScheduled || localStorage.getItem(TOUR_SEEN_KEY)) return;
+  autoTourScheduled = true;
+  // Let the plot and minimap finish their first render before measuring targets.
+  setTimeout(() => {
+    autoTourScheduled = false;
+    if (S.rows.length && !active && !localStorage.getItem(TOUR_SEEN_KEY)) startTour();
+  }, 300);
+});
+
 document.addEventListener('keydown', e => {
   if (!active) return;
   if (e.key === 'Escape')     { endTour(); e.stopPropagation(); }
@@ -1339,16 +1450,19 @@ window.addEventListener('resize', () => {
     const vw = window.innerWidth, vh = window.innerHeight;
     const hl = Math.max(0, rect.left);
     const ht = Math.max(0, rect.top);
-    tHL.style.left   = hl + 'px';
-    tHL.style.top    = ht + 'px';
-    tHL.style.width  = Math.max(0, Math.min(rect.right,  vw) - hl) + 'px';
-    tHL.style.height = Math.max(0, Math.min(rect.bottom, vh) - ht) + 'px';
+    tHL.style.left   = cssRem(hl);
+    tHL.style.top    = cssRem(ht);
+    tHL.style.width  = cssRem(Math.max(0, Math.min(rect.right,  vw) - hl));
+    tHL.style.height = cssRem(Math.max(0, Math.min(rect.bottom, vh) - ht));
   }
-  positionCard(rect, steps[cur].arrow);
+  const cardFits = positionCard(rect, steps[cur].arrow);
+  if (rect && !cardFits) {
+    tHL.classList.remove('visible');
+    tDim.classList.add('visible');
+  } else if (rect) {
+    tHL.classList.add('visible');
+    tDim.classList.remove('visible');
+  }
 }, { passive: true });
-
-if (!localStorage.getItem(TOUR_SEEN_KEY)) {
-  setTimeout(startTour, 600);
-}
 
 })();

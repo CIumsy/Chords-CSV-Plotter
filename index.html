@@ -21,7 +21,7 @@
   <div class="topbar-controls">
     <!-- Sample rate -->
     <div class="tb-sr-group">
-      <label class="tb-lbl" for="srInput">SPS</label>
+      <label class="tb-lbl" for="srInput">Sample Rate</label>
       <input id="srInput" class="tb-input" type="number" min="0" step="any" placeholder="250" aria-label="Sample rate in Hz"/>
     </div>
 
@@ -49,15 +49,16 @@
 <!-- LAYOUT -->
 <div class="layout">
 
-  <!-- SIDEBAR (auto-hide channels and loaded filename) -->
+  <!-- Toggleable channels sidebar and loaded filename -->
   <aside class="sidebar" id="sidebar">
-    <div class="ch-header">
+    <button class="ch-header" id="sidebarToggle" type="button" aria-expanded="false" aria-controls="chList" aria-label="Expand channels" title="Expand channels">
       <svg class="ch-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
         <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
       </svg>
       <span class="sb-label">Channels</span>
-    </div>
+      <svg class="ch-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
     <div class="sidebar-file-row" id="fileBadgeRow">
       <div class="file-badge" id="fileBadge" style="display:none">
         <span class="file-badge-name" id="fileNameDisplay"></span>
@@ -167,7 +168,7 @@
   <div class="tour-top">
     <div class="tour-badge" id="tourBadge">Step 1 of 6</div>
     <div class="tour-step-dots" id="tourDots"></div>
-    <button class="tour-close" id="tourClose" aria-label="Close tour">✕</button>
+    <button class="tour-close" id="tourClose" aria-label="Close tour">&#x2715;</button>
   </div>
   <div class="tour-title-row">
     <div class="tour-icon" id="tourIcon"></div>
@@ -176,8 +177,8 @@
   <div class="tour-body" id="tourBody"></div>
   <div class="tour-actions">
     <button class="tour-btn-skip" id="tourSkip">Skip tour</button>
-    <button class="tour-btn-prev" id="tourPrev">← Back</button>
-    <button class="tour-btn-next" id="tourNext">Next →</button>
+    <button class="tour-btn-prev" id="tourPrev">&#x2190; Back</button>
+    <button class="tour-btn-next" id="tourNext">Next &#x2192;</button>
   </div>
 </div>
 
