@@ -18,7 +18,7 @@
 // variables in style.css so light/dark themes can each have their own set.
 const TRACKS = ['--c1','--c2','--c3','--c4','--c5','--c6','--c7','--c8'];
 function trackColor(i) {
-  return getComputedStyle(document.documentElement).getPropertyValue(TRACKS[i % TRACKS.length]).trim();
+  return cssVar(TRACKS[i % TRACKS.length]);
 }
 
 /* -- APP STATE -- */
@@ -76,14 +76,34 @@ const fftCtx  = el.fftCanvas.getContext('2d');
 // can be zoomed in to.
 const SCALE_MIN = 0.05, SCALE_MAX = 200;
 const WIN_MIN = 64, WIN_MAX = 100000, FFT_MAX_SAMPLES = 32768;
+const coarsePointerQuery = window.matchMedia('(any-pointer: coarse)');
 
 /* -- GENERIC HELPERS -- */
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const fmt   = (v, d=3) => Number.isFinite(v) ? v.toFixed(d) : '-';
 const fmtN  = v => Number.isFinite(v) ? Math.round(v).toLocaleString() : '0';
 const fmtLbl = v => { if (!Number.isFinite(v)) return '-'; if (v === 0) return '0'; return v.toPrecision(3); };
-function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-function rootRemPixels() { return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16; }
+const visualStyleCache = new Map();
+let cachedRootRemPixels = 0;
+function cssVar(name) {
+  if (!visualStyleCache.has(name)) {
+    visualStyleCache.set(
+      name,
+      getComputedStyle(document.documentElement).getPropertyValue(name).trim(),
+    );
+  }
+  return visualStyleCache.get(name);
+}
+function rootRemPixels() {
+  if (!cachedRootRemPixels) {
+    cachedRootRemPixels = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  }
+  return cachedRootRemPixels;
+}
+function invalidateVisualStyleCache() {
+  visualStyleCache.clear();
+  cachedRootRemPixels = 0;
+}
 function cssRem(valueInPixels) { return `${valueInPixels / rootRemPixels()}rem`; }
 
 // Canvas backing stores use physical screen pixels, while all drawing code
@@ -154,6 +174,7 @@ function setThemeIcon() {
 el.themeBtn.addEventListener('click', () => {
   const d = document.documentElement;
   d.dataset.theme = d.dataset.theme === 'dark' ? 'light' : 'dark';
+  invalidateVisualStyleCache();
   setThemeIcon();
   buildChannelList(); // channel checkbox colors are read live via trackColor()
   invalidateMinimap();
@@ -996,12 +1017,35 @@ function minimapGeometry(total, trackWidth, start, windowSize) {
   const scrollProgress = scrollRange > 0 ? clamp(start / scrollRange, 0, 1) : 0;
   const displayLeft = scrollProgress * Math.max(0, trackWidth - displayWidth);
   const { minimumWidth } = minimapCompressedScale(trackWidth);
-  const hitWidth = Math.max(displayWidth, minimumWidth);
+  const minimumHitWidth = Math.min(
+    trackWidth,
+    coarsePointerQuery.matches ? rootRemPixels() * 6.25 : minimumWidth,
+  );
+  const hitWidth = Math.max(displayWidth, minimumHitWidth);
   const hitLeft = clamp(
     displayLeft - (hitWidth - displayWidth) / 2,
     0,
     Math.max(0, trackWidth - hitWidth),
   );
+  const minimumHandleGap = Math.min(
+    trackWidth,
+    rootRemPixels() * (coarsePointerQuery.matches ? 3.25 : 0.9),
+  );
+  let handleLeft = displayLeft;
+  let handleRight = displayLeft + displayWidth;
+  if (displayWidth < minimumHandleGap) {
+    const center = displayLeft + displayWidth / 2;
+    handleLeft = center - minimumHandleGap / 2;
+    handleRight = center + minimumHandleGap / 2;
+    if (handleLeft < 0) {
+      handleRight -= handleLeft;
+      handleLeft = 0;
+    }
+    if (handleRight > trackWidth) {
+      handleLeft -= handleRight - trackWidth;
+      handleRight = trackWidth;
+    }
+  }
   return {
     compressed: usesCompressedMinimap(total, trackWidth),
     displayWidth,
@@ -1009,17 +1053,9 @@ function minimapGeometry(total, trackWidth, start, windowSize) {
     hitWidth,
     hitLeft,
     visualLeft: displayLeft - hitLeft,
+    handleLeft,
+    handleRight,
   };
-}
-
-function windowForCompressedMinimapWidth(visualWidth, trackWidth) {
-  const { minimumWidth, largestCompressedWidth } = minimapCompressedScale(trackWidth);
-  const smallestWindow = minHorizontalWindow();
-  const largestWindow = maxHorizontalWindow();
-  const widthSpan = largestCompressedWidth - minimumWidth;
-  if (widthSpan <= 0 || largestWindow <= smallestWindow) return smallestWindow;
-  const progress = clamp((visualWidth - minimumWidth) / widthSpan, 0, 1);
-  return Math.round(smallestWindow * Math.pow(largestWindow / smallestWindow, progress));
 }
 
 function updateMinimapViewport() {
@@ -1047,9 +1083,19 @@ function updateMinimapViewport() {
   el.minimapViewport.style.width = `${(geometry.hitWidth / trackW) * 100}%`;
   el.minimapWindowVisual.style.left = `${(geometry.visualLeft / geometry.hitWidth) * 100}%`;
   el.minimapWindowVisual.style.width = `${(geometry.displayWidth / geometry.hitWidth) * 100}%`;
+  el.minimapWindowVisual.style.setProperty(
+    '--minimap-left-handle-offset',
+    cssRem(geometry.handleLeft - geometry.displayLeft),
+  );
+  el.minimapWindowVisual.style.setProperty(
+    '--minimap-right-handle-offset',
+    cssRem(geometry.handleRight - geometry.displayLeft - geometry.displayWidth),
+  );
+  const expandedHit = geometry.hitWidth > geometry.displayWidth + 0.5;
+  el.minimapViewport.classList.toggle('expanded-hit', expandedHit);
   el.minimapViewport.style.setProperty(
     '--minimap-visual-center',
-    `${((geometry.visualLeft + geometry.displayWidth / 2) / geometry.hitWidth) * 100}%`,
+    `${(((geometry.handleLeft + geometry.handleRight) / 2 - geometry.hitLeft) / geometry.hitWidth) * 100}%`,
   );
   el.minimapViewport.classList.toggle('narrow', geometry.hitWidth < rootRemPixels() * 5.5);
 
@@ -1064,12 +1110,72 @@ function updateMinimapViewport() {
 (function initMinimapControls() {
   let drag = null;
 
+  function buildCompressedEdgeLookup(mode, dragState, total) {
+    const fixedEnd = dragState.startStart + dragState.startWindow;
+    const minimumWindow = minHorizontalWindow();
+    const maximumWindow = mode === 'left'
+      ? Math.min(maxHorizontalWindow(), fixedEnd)
+      : Math.min(maxHorizontalWindow(), total - dragState.startStart);
+    const steps = 256;
+    const ratio = Math.max(1, maximumWindow / minimumWindow);
+    const points = [];
+
+    for (let step = 0; step <= steps; step++) {
+      const progress = step / steps;
+      const windowSize = step === steps
+        ? maximumWindow
+        : minimumWindow * Math.pow(ratio, progress);
+      const start = mode === 'left' ? fixedEnd - windowSize : dragState.startStart;
+      const geometry = minimapGeometry(total, dragState.rect.width, start, windowSize);
+      points.push({
+        edge: mode === 'left' ? geometry.handleLeft : geometry.handleRight,
+        window: windowSize,
+      });
+    }
+
+    return {
+      points,
+      increasing: points[points.length - 1].edge >= points[0].edge,
+    };
+  }
+
+  function compressedWindowForEdge(targetEdge, lookup) {
+    const { points, increasing } = lookup;
+    const edgeKey = point => increasing ? point.edge : -point.edge;
+    const targetKey = increasing ? targetEdge : -targetEdge;
+    const lastIndex = points.length - 1;
+
+    if (targetKey <= edgeKey(points[0])) return Math.round(points[0].window);
+    if (targetKey >= edgeKey(points[lastIndex])) return Math.round(points[lastIndex].window);
+
+    let low = 0;
+    let high = lastIndex;
+    while (high - low > 1) {
+      const middle = (low + high) >> 1;
+      if (edgeKey(points[middle]) < targetKey) low = middle;
+      else high = middle;
+    }
+
+    const lowKey = edgeKey(points[low]);
+    const highKey = edgeKey(points[high]);
+    const progress = highKey > lowKey
+      ? clamp((targetKey - lowKey) / (highKey - lowKey), 0, 1)
+      : 0;
+    return Math.round(points[low].window + progress * (points[high].window - points[low].window));
+  }
+
   function pointerMode(event, rect) {
     const geometry = minimapGeometry(S.rowCount, rect.width, S.start, S.window);
     const pointerX = event.clientX - rect.left;
-    const leftDistance = Math.abs(pointerX - geometry.displayLeft);
-    const rightDistance = Math.abs(pointerX - (geometry.displayLeft + geometry.displayWidth));
-    const edgeRadius = rootRemPixels() * (event.pointerType === 'touch' ? 1.1 : 0.7);
+    const expandedHit = geometry.hitWidth > geometry.displayWidth + 0.5;
+    if (expandedHit) {
+      const panCenter = (geometry.handleLeft + geometry.handleRight) / 2;
+      const panRadius = rootRemPixels() * (event.pointerType === 'touch' ? 0.5 : 0.35);
+      if (Math.abs(pointerX - panCenter) <= panRadius) return 'pan';
+    }
+    const leftDistance = Math.abs(pointerX - geometry.handleLeft);
+    const rightDistance = Math.abs(pointerX - geometry.handleRight);
+    const edgeRadius = rootRemPixels() * (event.pointerType === 'touch' ? 1.35 : 0.7);
     if (Math.min(leftDistance, rightDistance) > edgeRadius) return 'pan';
     return leftDistance <= rightDistance ? 'left' : 'right';
   }
@@ -1090,10 +1196,14 @@ function updateMinimapViewport() {
       startWindow: S.window,
       rect,
       owner,
-      startVisualWidth: geometry.displayWidth,
+      startDisplayLeft: geometry.handleLeft,
+      startDisplayRight: geometry.handleRight,
       startHitWidth: geometry.hitWidth,
       compressedSizing: geometry.compressed,
     };
+    if (drag.compressedSizing && mode !== 'pan') {
+      drag.edgeLookup = buildCompressedEdgeLookup(mode, drag, S.rowCount);
+    }
     clearTimeout(wheelSettleTimer);
     el.minimapViewport.style.cursor = mode === 'pan' ? 'grabbing' : 'ew-resize';
     el.minimapWrap.classList.add('is-dragging');
@@ -1116,11 +1226,9 @@ function updateMinimapViewport() {
     } else if (drag.mode === 'left') {
       const fixedEnd = drag.startStart + drag.startWindow;
       if (drag.compressedSizing) {
-        const visualWidth = drag.startVisualWidth + (drag.startX - e.clientX) * 2;
-        const newWindow = clamp(
-          windowForCompressedMinimapWidth(visualWidth, drag.rect.width),
-          minHorizontalWindow(),
-          Math.min(maxHorizontalWindow(), fixedEnd),
+        const newWindow = compressedWindowForEdge(
+          drag.startDisplayLeft + pointerDelta,
+          drag.edgeLookup,
         );
         changed = setHorizontalView(fixedEnd - newWindow, newWindow);
         if (changed) renderInteractive();
@@ -1135,11 +1243,9 @@ function updateMinimapViewport() {
     } else if (drag.mode === 'right') {
       const maxWindowFromStart = Math.min(maxHorizontalWindow(), total - drag.startStart);
       if (drag.compressedSizing) {
-        const visualWidth = drag.startVisualWidth + (e.clientX - drag.startX) * 2;
-        const newWindow = clamp(
-          windowForCompressedMinimapWidth(visualWidth, drag.rect.width),
-          minHorizontalWindow(),
-          maxWindowFromStart,
+        const newWindow = compressedWindowForEdge(
+          drag.startDisplayRight + pointerDelta,
+          drag.edgeLookup,
         );
         changed = setHorizontalView(drag.startStart, newWindow);
         if (changed) renderInteractive();
@@ -1246,10 +1352,9 @@ function visibleSeries() {
 
 function chooseLodLevel(levels, samplesPerPixel) {
   let chosen = null;
-  // While navigating, prefer a coarser cached envelope. It preserves spikes
-  // but keeps the number of canvas operations low enough to follow the pointer.
-  const detailMultiplier = interactiveRendering ? 8 : 2;
-  const targetBucketSize = samplesPerPixel * detailMultiplier;
+  // Use the same bounded envelope during and after navigation so the waveform
+  // never changes shape merely because the user is scrolling.
+  const targetBucketSize = samplesPerPixel * 2;
   for (const level of levels) {
     if (level.bucketSize > targetBucketSize) break;
     chosen = level;
@@ -1717,10 +1822,15 @@ function renderInteractive() {
   if (raf) return;
   raf = requestAnimationFrame(timestamp => {
     raf = 0;
-    updateTimeline();
-    // The viewport follows at display refresh rate; the heavier waveform is
-    // limited to roughly 30 FPS and uses the coarser LOD selected above.
-    if (timestamp - lastInteractiveMainDraw >= 32) {
+    // The overview canvas does not change while navigating. Updating only the
+    // DOM viewport avoids a forced canvas measurement on every pointer frame.
+    updateMinimapViewport();
+    const scheduling = navigator.scheduling;
+    const inputPending = typeof scheduling?.isInputPending === 'function'
+      && scheduling.isInputPending({ includeContinuous: true });
+    // The lightweight minimap follows every display frame; waveform work is
+    // independently capped near 30 FPS and yields to queued pointer input.
+    if (!inputPending && timestamp - lastInteractiveMainDraw >= 32) {
       lastInteractiveMainDraw = timestamp;
       drawMain();
     }
