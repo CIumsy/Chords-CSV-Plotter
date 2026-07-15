@@ -78,7 +78,7 @@ const fftCtx  = el.fftCanvas.getContext('2d');
 // Scale and window limits
 /*
 Vertical scale uses tenths through 1 and whole numbers through 10.
-WIN_MIN is the smallest horizontal window.
+DEFAULT_WIN_MIN is used when no sample rate is entered.
 */
 const VERTICAL_SCALE_VALUES = Object.freeze([
   0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00,
@@ -88,7 +88,7 @@ const VERTICAL_SCALE_VALUES = Object.freeze([
 Static views draw up to 20,000 samples.
 Navigation uses a limited preview for speed.
 */
-const WIN_MIN = 64, WIN_MAX = 20000, RAW_DRAW_MAX = WIN_MAX;
+const DEFAULT_WIN_MIN = 64, WIN_MAX = 20000, RAW_DRAW_MAX = WIN_MAX;
 const INTERACTIVE_RAW_MAX = 4096, FFT_MAX_SAMPLES = 32768;
 const coarsePointerQuery = window.matchMedia('(any-pointer: coarse)');
 
@@ -154,7 +154,10 @@ function useCrispHairline(ctx) {
 
 // Keep every horizontal view change within the data range
 function minHorizontalWindow() {
-  return Math.min(WIN_MIN, Math.max(1, S.rowCount));
+  const oneSecondWindow = Number.isFinite(S.sampleRate) && S.sampleRate > 0
+    ? Math.round(S.sampleRate)
+    : DEFAULT_WIN_MIN;
+  return Math.min(maxHorizontalWindow(), Math.max(1, oneSecondWindow));
 }
 function maxHorizontalWindow() {
   return Math.min(WIN_MAX, Math.max(1, S.rowCount));
@@ -775,6 +778,7 @@ function stepVerticalScale(direction) {
 el.srInput.addEventListener('input', () => {
   const n = parseFloat(el.srInput.value);
   S.sampleRate = n > 0 ? n : null;
+  if (S.rowCount) setHorizontalView(S.start, S.window);
   renderAll();
 });
 
