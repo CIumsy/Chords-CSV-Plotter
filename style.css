@@ -294,35 +294,21 @@ canvas{display:block}
 .minimap-offset-label--left{left:1.125rem;text-align:left}
 .minimap-offset-label--right{right:1.125rem;text-align:right}
 .minimap-track{
-  position:relative;width:100%;height:100%;overflow:hidden;
+  position:relative;width:100%;height:100%;overflow:visible;
   border:.0625rem solid var(--border);border-radius:.4375rem;
   background:rgba(0,0,0,.22);box-shadow:inset 0 .0625rem .125rem rgba(0,0,0,.16);
   cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;
 }
 [data-theme="light"] .minimap-track{background:rgba(255,255,255,.26)}
-.minimap-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.minimap-canvas{position:absolute;inset:0;width:100%;height:100%;border-radius:inherit;pointer-events:none}
 .minimap-viewport{
-  position:absolute;top:0;height:100%;min-width:.125rem;
-  box-sizing:border-box;background:transparent;
-  cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;
+  position:absolute;top:0;height:100%;min-width:0;
+  box-sizing:border-box;background:transparent;pointer-events:none;
+  touch-action:none;user-select:none;-webkit-user-select:none;
   will-change:left,width;z-index:2;outline:none;
 }
-.minimap-viewport::before{
-  content:'';position:absolute;inset:0;box-sizing:border-box;pointer-events:none;
-  border:.0625rem solid transparent;border-radius:.375rem;
-  background:transparent;opacity:0;transition:background .12s,border-color .12s,opacity .12s;
-}
-.minimap-viewport.expanded-hit::before{
-  border-color:color-mix(in srgb,var(--primary) 32%,var(--border));
-  background:color-mix(in srgb,var(--primary) 8%,transparent);opacity:1;
-  box-shadow:inset 0 0 0 .0625rem color-mix(in srgb,var(--primary) 8%,transparent);
-}
-.minimap-viewport.expanded-hit:hover::before,.minimap-viewport.expanded-hit:focus-visible::before{
-  border-color:color-mix(in srgb,var(--primary) 58%,var(--border));
-  background:color-mix(in srgb,var(--primary) 12%,transparent);
-}
 .minimap-window-visual{
-  position:absolute;top:0;bottom:0;box-sizing:border-box;pointer-events:none;
+  position:absolute;inset:0;box-sizing:border-box;pointer-events:none;
   min-width:0;background:rgba(255,255,255,.17);
   border-left:.09375rem solid rgba(255,255,255,.72);
   border-right:.09375rem solid rgba(255,255,255,.72);
@@ -333,45 +319,42 @@ canvas{display:block}
   background:rgba(0,87,216,.13);border-color:rgba(0,55,140,.68);
   box-shadow:inset 0 0 0 .0625rem rgba(0,87,216,.12);
 }
-.minimap-viewport:hover .minimap-window-visual,.minimap-viewport:focus-visible .minimap-window-visual{
+.minimap-track:hover .minimap-window-visual,.minimap-viewport:focus-visible .minimap-window-visual{
   background:color-mix(in srgb,var(--primary) 20%,transparent);
   box-shadow:inset 0 0 0 .0625rem color-mix(in srgb,var(--primary) 68%,transparent),0 0 0 .125rem var(--primary-soft);
 }
 .minimap-viewport:focus-visible{outline:.125rem solid var(--primary);outline-offset:-.125rem}
-.minimap-wrap.is-dragging .minimap-viewport{cursor:grabbing}
 .minimap-wrap.is-dragging .minimap-window-visual{background:color-mix(in srgb,var(--primary) 25%,transparent)}
-.minimap-handle{
-  position:absolute;top:0;bottom:0;width:.875rem;z-index:4;
-  pointer-events:none;touch-action:none;
+.minimap-resize-pin{
+  position:absolute;top:0;width:1.25rem;height:1.75rem;z-index:4;
+  transform:translate(-50%,-50%);pointer-events:auto;touch-action:none;cursor:ew-resize;
+  color:color-mix(in srgb,var(--primary) 82%,white);
 }
-.minimap-handle::after{
+.minimap-resize-pin::before{
   content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:.1875rem;height:1.35rem;border-radius:var(--radius-full);
-  background:currentColor;box-shadow:0 0 0 .0625rem color-mix(in srgb,var(--surf) 70%,transparent);
-  color:rgba(255,255,255,.9);opacity:.9;
+  width:.875rem;height:.875rem;border:.125rem solid currentColor;border-radius:50%;
+  box-sizing:border-box;background:var(--surf);
+  box-shadow:0 0 0 .0625rem color-mix(in srgb,var(--surf) 80%,transparent),0 .125rem .25rem rgba(0,0,0,.22);
+  transition:transform .12s ease,background .12s ease,color .12s ease;
 }
-[data-theme="light"] .minimap-handle::after{color:rgba(0,55,140,.85)}
-.minimap-handle--left{
-  left:0;right:auto;transform:translateX(calc(-50% + var(--minimap-left-handle-offset,0rem)));
+.minimap-resize-pin--left{left:var(--minimap-left-pin-offset,0rem)}
+.minimap-resize-pin--right{left:calc(100% + var(--minimap-right-pin-offset,0rem))}
+.minimap-wrap.is-resizing-left .minimap-resize-pin--left::before,
+.minimap-wrap.is-resizing-right .minimap-resize-pin--right::before{
+  background:var(--primary);color:white;
 }
-.minimap-handle--right{
-  left:100%;right:auto;transform:translateX(calc(-50% + var(--minimap-right-handle-offset,0rem)));
-}
+.minimap-wrap.is-resizing-left .minimap-resize-pin--left,
+.minimap-wrap.is-resizing-right .minimap-resize-pin--right{z-index:6}
 .minimap-window-grip{
-  position:absolute;left:var(--minimap-visual-center,50%);top:50%;transform:translate(-50%,-50%);
+  position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);
   display:flex;gap:.125rem;align-items:center;pointer-events:none;opacity:.7;z-index:3;
 }
 .minimap-window-grip i{display:block;width:.0625rem;height:.75rem;background:currentColor;border-radius:.0625rem}
-.minimap-viewport.narrow .minimap-window-grip{opacity:.45}
-.minimap-viewport.expanded-hit .minimap-window-grip{opacity:.8}
+.minimap-viewport.narrow .minimap-window-grip{opacity:.85}
 .minimap-wrap.disabled{display:none}
 .minimap-wrap:not(.disabled) .minimap-track:hover{border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
 
-@media(any-pointer:coarse){
-  .minimap-handle{width:1.5rem}
-  .minimap-handle::after{width:.25rem;height:1.75rem}
-}
-
+@media(any-pointer:coarse){.minimap-resize-pin{height:2rem}}
 
 /* -- FFT PANEL -- */
 .fft-col{
@@ -527,8 +510,6 @@ canvas{display:block}
   .timeline-label{font-size:.5625rem;max-width:calc(50% - 1.5rem);top:var(--space-1)}
   .minimap-offset-label--left{left:1.125rem}
   .minimap-offset-label--right{right:1.125rem}
-  .minimap-handle{width:1.25rem}
-  .minimap-handle::after{height:1.5rem}
   .topbar-controls{flex-wrap:wrap;justify-content:flex-end;gap:.625rem}
 }
 @media(max-width:33.75em){

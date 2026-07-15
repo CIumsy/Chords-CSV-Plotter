@@ -75,7 +75,10 @@ const fftCtx  = el.fftCanvas.getContext('2d');
 // each channel's range). WIN_MIN is the smallest number of samples the X-axis
 // can be zoomed in to.
 const SCALE_MIN = 0.05, SCALE_MAX = 200;
-const WIN_MIN = 64, WIN_MAX = 100000, FFT_MAX_SAMPLES = 32768;
+// A settled view draws every sample up to 20,000. Live navigation temporarily
+// uses the bounded LOD preview so dragging and scrolling remain responsive.
+const WIN_MIN = 64, WIN_MAX = 20000, RAW_DRAW_MAX = WIN_MAX;
+const INTERACTIVE_RAW_MAX = 4096, FFT_MAX_SAMPLES = 32768;
 const coarsePointerQuery = window.matchMedia('(any-pointer: coarse)');
 
 /* -- GENERIC HELPERS -- */
@@ -841,8 +844,14 @@ el.canvasWrap.addEventListener('wheel', e => {
 window.addEventListener('keydown', e => {
   if (e.target.matches('input,textarea,select') || e.target.isContentEditable) return;
   const W = Math.max(1, Math.floor(S.window * 0.1));
-  if (e.key === 'ArrowLeft')  { setHorizontalView(S.start - W, S.window); renderAll(); e.preventDefault(); }
-  if (e.key === 'ArrowRight') { setHorizontalView(S.start + W, S.window); renderAll(); e.preventDefault(); }
+  if (e.key === 'ArrowLeft') {
+    if (setHorizontalView(S.start - W, S.window)) renderWheelInteraction();
+    e.preventDefault();
+  }
+  if (e.key === 'ArrowRight') {
+    if (setHorizontalView(S.start + W, S.window)) renderWheelInteraction();
+    e.preventDefault();
+  }
 });
 
 /* -- FFT PANEL RESIZE -- */
@@ -1016,45 +1025,45 @@ function minimapGeometry(total, trackWidth, start, windowSize) {
   const scrollRange = Math.max(0, total - windowSize);
   const scrollProgress = scrollRange > 0 ? clamp(start / scrollRange, 0, 1) : 0;
   const displayLeft = scrollProgress * Math.max(0, trackWidth - displayWidth);
-  const { minimumWidth } = minimapCompressedScale(trackWidth);
-  const minimumHitWidth = Math.min(
+  const minimumPinGap = Math.min(
     trackWidth,
-    coarsePointerQuery.matches ? rootRemPixels() * 6.25 : minimumWidth,
+    rootRemPixels() * 1.375,
   );
-  const hitWidth = Math.max(displayWidth, minimumHitWidth);
-  const hitLeft = clamp(
-    displayLeft - (hitWidth - displayWidth) / 2,
-    0,
-    Math.max(0, trackWidth - hitWidth),
-  );
-  const minimumHandleGap = Math.min(
-    trackWidth,
-    rootRemPixels() * (coarsePointerQuery.matches ? 3.25 : 0.9),
-  );
-  let handleLeft = displayLeft;
-  let handleRight = displayLeft + displayWidth;
-  if (displayWidth < minimumHandleGap) {
+  let pinLeft = displayLeft;
+  let pinRight = displayLeft + displayWidth;
+  if (displayWidth < minimumPinGap) {
     const center = displayLeft + displayWidth / 2;
-    handleLeft = center - minimumHandleGap / 2;
-    handleRight = center + minimumHandleGap / 2;
-    if (handleLeft < 0) {
-      handleRight -= handleLeft;
-      handleLeft = 0;
+    pinLeft = center - minimumPinGap / 2;
+    pinRight = center + minimumPinGap / 2;
+    if (pinLeft < 0) {
+      pinRight -= pinLeft;
+      pinLeft = 0;
     }
-    if (handleRight > trackWidth) {
-      handleLeft -= handleRight - trackWidth;
-      handleRight = trackWidth;
+    if (pinRight > trackWidth) {
+      pinLeft -= pinRight - trackWidth;
+      pinRight = trackWidth;
     }
   }
+  const minimumPanWidth = Math.min(
+    trackWidth,
+    rootRemPixels() * (coarsePointerQuery.matches ? 4.5 : 3),
+  );
+  const panWidth = Math.max(displayWidth, minimumPanWidth);
+  const panLeft = clamp(
+    displayLeft - (panWidth - displayWidth) / 2,
+    0,
+    Math.max(0, trackWidth - panWidth),
+  );
   return {
     compressed: usesCompressedMinimap(total, trackWidth),
     displayWidth,
     displayLeft,
-    hitWidth,
-    hitLeft,
-    visualLeft: displayLeft - hitLeft,
-    handleLeft,
-    handleRight,
+    handleLeft: displayLeft,
+    handleRight: displayLeft + displayWidth,
+    pinLeft,
+    pinRight,
+    panLeft,
+    panWidth,
   };
 }
 
@@ -1068,6 +1077,7 @@ function updateMinimapViewport() {
     el.tlStart.textContent = '0';
     el.tlEnd.textContent = '0';
     el.minimapViewport.style.display = 'none';
+    el.minimapTrack.removeAttribute('title');
     return;
   }
 
@@ -1079,29 +1089,23 @@ function updateMinimapViewport() {
   const trackW = Math.max(1, el.minimapTrack.clientWidth);
   const geometry = minimapGeometry(total, trackW, S.start, S.window);
 
-  el.minimapViewport.style.left = `${(geometry.hitLeft / trackW) * 100}%`;
-  el.minimapViewport.style.width = `${(geometry.hitWidth / trackW) * 100}%`;
-  el.minimapWindowVisual.style.left = `${(geometry.visualLeft / geometry.hitWidth) * 100}%`;
-  el.minimapWindowVisual.style.width = `${(geometry.displayWidth / geometry.hitWidth) * 100}%`;
+  el.minimapViewport.style.left = `${(geometry.displayLeft / trackW) * 100}%`;
+  el.minimapViewport.style.width = `${(geometry.displayWidth / trackW) * 100}%`;
   el.minimapWindowVisual.style.setProperty(
-    '--minimap-left-handle-offset',
-    cssRem(geometry.handleLeft - geometry.displayLeft),
+    '--minimap-left-pin-offset',
+    cssRem(geometry.pinLeft - geometry.displayLeft),
   );
   el.minimapWindowVisual.style.setProperty(
-    '--minimap-right-handle-offset',
-    cssRem(geometry.handleRight - geometry.displayLeft - geometry.displayWidth),
+    '--minimap-right-pin-offset',
+    cssRem(geometry.pinRight - geometry.handleRight),
   );
-  const expandedHit = geometry.hitWidth > geometry.displayWidth + 0.5;
-  el.minimapViewport.classList.toggle('expanded-hit', expandedHit);
-  el.minimapViewport.style.setProperty(
-    '--minimap-visual-center',
-    `${(((geometry.handleLeft + geometry.handleRight) / 2 - geometry.hitLeft) / geometry.hitWidth) * 100}%`,
-  );
-  el.minimapViewport.classList.toggle('narrow', geometry.hitWidth < rootRemPixels() * 5.5);
+  el.minimapViewport.classList.toggle('narrow', geometry.displayWidth < rootRemPixels() * 2.75);
 
   const end = Math.min(total, S.start + S.window);
   const rangeText = `${formatTimelinePosition(S.start)} – ${formatTimelinePosition(Math.max(S.start, end - 1))}`;
-  el.minimapViewport.title = `${rangeText} · ${fmtN(S.window)} samples · Drag to move; edges resize`;
+  const interactionTitle = `${rangeText} · ${fmtN(S.window)} samples · Drag to move; corner circles resize`;
+  el.minimapViewport.title = interactionTitle;
+  el.minimapTrack.title = interactionTitle;
   el.minimapViewport.setAttribute('aria-valuemax', String(Math.max(0, total - S.window)));
   el.minimapViewport.setAttribute('aria-valuenow', String(S.start));
   el.minimapViewport.setAttribute('aria-valuetext', `${rangeText}; ${fmtN(S.window)} samples visible`);
@@ -1128,7 +1132,7 @@ function updateMinimapViewport() {
       const start = mode === 'left' ? fixedEnd - windowSize : dragState.startStart;
       const geometry = minimapGeometry(total, dragState.rect.width, start, windowSize);
       points.push({
-        edge: mode === 'left' ? geometry.handleLeft : geometry.handleRight,
+        edge: mode === 'left' ? geometry.pinLeft : geometry.pinRight,
         window: windowSize,
       });
     }
@@ -1164,26 +1168,28 @@ function updateMinimapViewport() {
     return Math.round(points[low].window + progress * (points[high].window - points[low].window));
   }
 
-  function pointerMode(event, rect) {
+  function interactionMode(event, rect) {
     const geometry = minimapGeometry(S.rowCount, rect.width, S.start, S.window);
     const pointerX = event.clientX - rect.left;
-    const expandedHit = geometry.hitWidth > geometry.displayWidth + 0.5;
-    if (expandedHit) {
-      const panCenter = (geometry.handleLeft + geometry.handleRight) / 2;
-      const panRadius = rootRemPixels() * (event.pointerType === 'touch' ? 0.5 : 0.35);
-      if (Math.abs(pointerX - panCenter) <= panRadius) return 'pan';
+    if (pointerX >= geometry.panLeft && pointerX <= geometry.panLeft + geometry.panWidth) {
+      return 'pan';
     }
-    const leftDistance = Math.abs(pointerX - geometry.handleLeft);
-    const rightDistance = Math.abs(pointerX - geometry.handleRight);
-    const edgeRadius = rootRemPixels() * (event.pointerType === 'touch' ? 1.35 : 0.7);
-    if (Math.min(leftDistance, rightDistance) > edgeRadius) return 'pan';
-    return leftDistance <= rightDistance ? 'left' : 'right';
+    return 'jump';
+  }
+
+  function pinMode(event, rect) {
+    const geometry = minimapGeometry(S.rowCount, rect.width, S.start, S.window);
+    const pointerX = event.clientX - rect.left;
+    return Math.abs(pointerX - geometry.pinLeft) <= Math.abs(pointerX - geometry.pinRight)
+      ? 'left'
+      : 'right';
   }
 
   function beginDrag(mode, e, owner) {
     if (!S.rowCount || e.button > 0) return;
     e.preventDefault();
     e.stopPropagation();
+    el.minimapViewport.focus({ preventScroll: true });
     const rect = el.minimapTrack.getBoundingClientRect();
     if (rect.width <= 0) return;
     const geometry = minimapGeometry(S.rowCount, rect.width, S.start, S.window);
@@ -1196,17 +1202,19 @@ function updateMinimapViewport() {
       startWindow: S.window,
       rect,
       owner,
-      startDisplayLeft: geometry.handleLeft,
-      startDisplayRight: geometry.handleRight,
-      startHitWidth: geometry.hitWidth,
+      startDisplayLeft: geometry.pinLeft,
+      startDisplayRight: geometry.pinRight,
+      startDisplayWidth: geometry.displayWidth,
       compressedSizing: geometry.compressed,
     };
     if (drag.compressedSizing && mode !== 'pan') {
       drag.edgeLookup = buildCompressedEdgeLookup(mode, drag, S.rowCount);
     }
     clearTimeout(wheelSettleTimer);
-    el.minimapViewport.style.cursor = mode === 'pan' ? 'grabbing' : 'ew-resize';
+    el.minimapTrack.style.cursor = mode === 'pan' ? 'grabbing' : 'ew-resize';
     el.minimapWrap.classList.add('is-dragging');
+    el.minimapWrap.classList.toggle('is-resizing-left', mode === 'left');
+    el.minimapWrap.classList.toggle('is-resizing-right', mode === 'right');
     document.body.style.userSelect = 'none';
   }
 
@@ -1219,7 +1227,7 @@ function updateMinimapViewport() {
     let changed = false;
 
     if (drag.mode === 'pan') {
-      const pixelTravel = Math.max(1, drag.rect.width - drag.startHitWidth);
+      const pixelTravel = Math.max(1, drag.rect.width - drag.startDisplayWidth);
       const sampleTravel = Math.max(0, total - drag.startWindow);
       const panDelta = Math.round((pointerDelta / pixelTravel) * sampleTravel);
       changed = setHorizontalView(drag.startStart + panDelta, drag.startWindow);
@@ -1262,32 +1270,23 @@ function updateMinimapViewport() {
     try { drag.owner.releasePointerCapture(drag.pointerId); } catch (_) {}
     drag = null;
     el.minimapWrap.classList.remove('is-dragging');
-    el.minimapViewport.style.cursor = '';
+    el.minimapWrap.classList.remove('is-resizing-left', 'is-resizing-right');
+    el.minimapTrack.style.cursor = '';
     document.body.style.userSelect = '';
     finishInteractiveRendering();
   }
 
-  el.minimapViewport.addEventListener('pointerdown', e => {
-    const rect = el.minimapTrack.getBoundingClientRect();
-    const mode = pointerMode(e, rect);
-    beginDrag(mode, e, el.minimapViewport);
-  });
-
-  el.minimapViewport.addEventListener('pointermove', e => {
-    if (drag) return;
-    const rect = el.minimapTrack.getBoundingClientRect();
-    el.minimapViewport.style.cursor = pointerMode(e, rect) === 'pan' ? 'grab' : 'ew-resize';
-  });
-  el.minimapViewport.addEventListener('pointerleave', () => {
-    if (!drag) el.minimapViewport.style.cursor = '';
-  });
-
-  // Clicking the overview jumps the current window to that location and then
-  // immediately becomes a pan drag, matching the Cardio minimap interaction.
   el.minimapTrack.addEventListener('pointerdown', e => {
-    if (!S.rowCount || el.minimapViewport.contains(e.target)) return;
+    if (!S.rowCount) return;
     const rect = el.minimapTrack.getBoundingClientRect();
     if (rect.width <= 0) return;
+    const mode = interactionMode(e, rect);
+    if (mode !== 'jump') {
+      beginDrag(mode, e, el.minimapTrack);
+      return;
+    }
+
+    // Clicking outside the window jumps it there and starts a pan drag.
     const displayWidth = minimapDisplayWidth(S.rowCount, rect.width, S.window);
     const viewportTravel = Math.max(1, rect.width - displayWidth);
     const targetLeft = e.clientX - rect.left - displayWidth / 2;
@@ -1299,6 +1298,24 @@ function updateMinimapViewport() {
       drag.startWindow = S.window;
     }
     if (changed) renderInteractive();
+  });
+
+  function beginPinDrag(e) {
+    const rect = el.minimapTrack.getBoundingClientRect();
+    beginDrag(pinMode(e, rect), e, e.currentTarget);
+  }
+  el.minimapLeftHandle.addEventListener('pointerdown', beginPinDrag);
+  el.minimapRightHandle.addEventListener('pointerdown', beginPinDrag);
+
+  el.minimapTrack.addEventListener('pointermove', e => {
+    if (drag || !S.rowCount) return;
+    const rect = el.minimapTrack.getBoundingClientRect();
+    const mode = interactionMode(e, rect);
+    el.minimapTrack.style.cursor = mode === 'pan' ? 'grab' : 'pointer';
+  });
+  el.minimapTrack.addEventListener('pointerleave', () => {
+    if (drag) return;
+    el.minimapTrack.style.cursor = '';
   });
 
   document.addEventListener('pointermove', moveDrag, { passive: false });
@@ -1317,7 +1334,7 @@ function updateMinimapViewport() {
     else return;
     e.preventDefault();
     e.stopPropagation();
-    renderAll();
+    renderWheelInteraction();
   });
 })();
 
@@ -1350,16 +1367,16 @@ function visibleSeries() {
     .filter(series => S.selected.has(series.ci) && series.data);
 }
 
-function chooseLodLevel(levels, samplesPerPixel) {
-  let chosen = null;
-  // Use the same bounded envelope during and after navigation so the waveform
-  // never changes shape merely because the user is scrolling.
-  const targetBucketSize = samplesPerPixel * 2;
-  for (const level of levels) {
-    if (level.bucketSize > targetBucketSize) break;
-    chosen = level;
+function chooseEnvelopeLodIndex(levels, samplesPerPixel) {
+  let chosenIndex = -1;
+  // Keep the cached bucket no wider than one screen column. Any partial
+  // range is assembled from smaller aligned buckets or original samples.
+  for (let index = 0; index < levels.length; index++) {
+    const level = levels[index];
+    if (level.bucketSize > samplesPerPixel) break;
+    chosenIndex = index;
   }
-  return chosen;
+  return chosenIndex;
 }
 
 /* -- MAIN PLOT RENDERING -- */
@@ -1477,59 +1494,102 @@ function drawMain() {
 
     mainCtx.strokeStyle = s.color;
     mainCtx.lineWidth   = 1.6;
-    mainCtx.lineJoin    = 'round';
-    mainCtx.lineCap     = 'round';
     const samplesPerPixel = visibleCount / Math.max(1, plotW);
-    const level = chooseLodLevel(s.levels, samplesPerPixel);
+    const useRawLine = visibleCount <= RAW_DRAW_MAX
+      && (!interactiveRendering || visibleCount <= INTERACTIVE_RAW_MAX);
+    // Round joins require extra geometry at every sample. Bevel/butt keeps the
+    // same connected trace while making raw navigation substantially cheaper.
+    mainCtx.lineJoin = 'bevel';
+    mainCtx.lineCap = 'butt';
     mainCtx.beginPath();
 
-    if (level) {
-      const firstBucket = Math.floor(S.start / level.bucketSize);
-      const lastBucket = Math.min(
-        level.min.length,
-        Math.ceil((S.start + visibleCount) / level.bucketSize),
-      );
-      for (let bucket = firstBucket; bucket < lastBucket; bucket++) {
-        const bucketStart = bucket * level.bucketSize;
-        const bucketEnd = Math.min(s.data.length, bucketStart + level.bucketSize);
-        const visibleStart = Math.max(S.start, bucketStart);
-        const visibleEnd = Math.min(S.start + visibleCount, bucketEnd);
-        if (visibleStart >= visibleEnd) continue;
-
-        let low = level.min[bucket];
-        let high = level.max[bucket];
-        // Cached buckets at either boundary may contain off-screen samples.
-        // Recompute only those partial buckets from the exact visible slice.
-        if (visibleStart !== bucketStart || visibleEnd !== bucketEnd) {
-          low = Infinity;
-          high = -Infinity;
-          for (let sample = visibleStart; sample < visibleEnd; sample++) {
-            const value = s.data[sample];
-            if (!Number.isFinite(value)) continue;
-            if (value < low) low = value;
-            if (value > high) high = value;
-          }
-        }
-        if (!Number.isFinite(low) || !Number.isFinite(high)) continue;
-        const sampleCenter = (visibleStart + visibleEnd - 1) / 2;
-        const xRatio = (sampleCenter - S.start) / Math.max(1, visibleCount - 1);
-        const x = MARGIN.left + xRatio * plotW;
-        const yTop = innerTop + (1 - (high - yMin) / Math.max(1e-12, yMax - yMin)) * innerH;
-        const yBottom = innerTop + (1 - (low - yMin) / Math.max(1e-12, yMax - yMin)) * innerH;
-        mainCtx.moveTo(x, yTop);
-        mainCtx.lineTo(x, yBottom);
-      }
-    } else {
+    if (useRawLine) {
       let started = false;
       const end = Math.min(s.data.length, S.start + visibleCount);
+      const xStep = plotW / Math.max(1, visibleCount - 1);
+      const yScale = innerH / Math.max(1e-12, yMax - yMin);
       for (let sample = S.start; sample < end; sample++) {
         const value = s.data[sample];
         if (!Number.isFinite(value)) { started = false; continue; }
         const localIndex = sample - S.start;
-        const x = MARGIN.left + (localIndex / Math.max(1, visibleCount - 1)) * plotW;
-        const y = innerTop + (1 - (value - yMin) / Math.max(1e-12, yMax - yMin)) * innerH;
+        const x = MARGIN.left + localIndex * xStep;
+        const y = innerTop + (yMax - value) * yScale;
         if (!started) { mainCtx.moveTo(x, y); started = true; }
         else mainCtx.lineTo(x, y);
+      }
+    } else {
+      // Draw at most one exact min/max envelope per CSS screen column. This
+      // gives every zoom level the same canvas workload instead of allowing
+      // factor-8 LOD transitions to spike to several segments per pixel.
+      const displayColumns = Math.max(1, Math.min(Math.ceil(plotW), visibleCount));
+      const maxLodIndex = chooseEnvelopeLodIndex(s.levels, samplesPerPixel);
+      const ySpan = Math.max(1e-12, yMax - yMin);
+      const yScale = innerH / ySpan;
+      const minimumStrokeHeight = 1 / canvasScale(mainCtx).y;
+
+      // Keep a continuous actual-data trace visible during the lightweight
+      // preview. The min/max segments below preserve every column's extremes.
+      let representativeStarted = false;
+      for (let column = 0; column < displayColumns; column++) {
+        const sampleStart = S.start + Math.floor((column / displayColumns) * visibleCount);
+        const sampleEnd = S.start + Math.floor(((column + 1) / displayColumns) * visibleCount);
+        if (sampleStart >= sampleEnd) continue;
+        const sample = sampleStart + Math.floor((sampleEnd - sampleStart - 1) / 2);
+        const value = s.data[sample];
+        if (!Number.isFinite(value)) {
+          representativeStarted = false;
+          continue;
+        }
+        const x = MARGIN.left + ((column + 0.5) / displayColumns) * plotW;
+        const y = innerTop + (yMax - value) * yScale;
+        if (!representativeStarted) {
+          mainCtx.moveTo(x, y);
+          representativeStarted = true;
+        } else {
+          mainCtx.lineTo(x, y);
+        }
+      }
+
+      for (let column = 0; column < displayColumns; column++) {
+        const sampleStart = S.start + Math.floor((column / displayColumns) * visibleCount);
+        const sampleEnd = S.start + Math.floor(((column + 1) / displayColumns) * visibleCount);
+        if (sampleStart >= sampleEnd) continue;
+
+        let low = Infinity;
+        let high = -Infinity;
+        let cursor = sampleStart;
+
+        while (cursor < sampleEnd) {
+          let usedCachedBucket = false;
+          for (let levelIndex = maxLodIndex; levelIndex >= 0; levelIndex--) {
+            const level = s.levels[levelIndex];
+            const bucketSize = level.bucketSize;
+            if (cursor % bucketSize !== 0 || cursor + bucketSize > sampleEnd) continue;
+            const bucket = cursor / bucketSize;
+            const bucketLow = level.min[bucket];
+            const bucketHigh = level.max[bucket];
+            if (Number.isFinite(bucketLow) && bucketLow < low) low = bucketLow;
+            if (Number.isFinite(bucketHigh) && bucketHigh > high) high = bucketHigh;
+            cursor += bucketSize;
+            usedCachedBucket = true;
+            break;
+          }
+          if (usedCachedBucket) continue;
+          const value = s.data[cursor];
+          if (Number.isFinite(value)) {
+            if (value < low) low = value;
+            if (value > high) high = value;
+          }
+          cursor++;
+        }
+        if (low === Infinity) continue;
+
+        const x = MARGIN.left + ((column + 0.5) / displayColumns) * plotW;
+        const yTop = innerTop + (yMax - high) * yScale;
+        let yBottom = innerTop + (yMax - low) * yScale;
+        if (Math.abs(yBottom - yTop) < minimumStrokeHeight) yBottom = yTop + minimumStrokeHeight;
+        mainCtx.moveTo(x, yTop);
+        mainCtx.lineTo(x, yBottom);
       }
     }
     mainCtx.stroke();
@@ -1825,12 +1885,9 @@ function renderInteractive() {
     // The overview canvas does not change while navigating. Updating only the
     // DOM viewport avoids a forced canvas measurement on every pointer frame.
     updateMinimapViewport();
-    const scheduling = navigator.scheduling;
-    const inputPending = typeof scheduling?.isInputPending === 'function'
-      && scheduling.isInputPending({ includeContinuous: true });
     // The lightweight minimap follows every display frame; waveform work is
-    // independently capped near 30 FPS and yields to queued pointer input.
-    if (!inputPending && timestamp - lastInteractiveMainDraw >= 32) {
+    // independently capped near 30 FPS with a scale-independent draw budget.
+    if (timestamp - lastInteractiveMainDraw >= 32) {
       lastInteractiveMainDraw = timestamp;
       drawMain();
     }
