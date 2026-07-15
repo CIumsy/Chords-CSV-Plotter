@@ -21,25 +21,34 @@
   <div class="topbar-controls">
     <!-- Sample rate -->
     <div class="tb-sr-group">
-      <label class="tb-lbl" for="srInput">Sample Rate</label>
-      <input id="srInput" class="tb-input" type="number" min="0" step="any" placeholder="250" aria-label="Sample rate in Hz"/>
+      <label class="tb-lbl" for="srInput">Sample Rate(Hz)</label>
+      <div class="tb-sr-entry">
+        <input id="srInput" class="tb-input" type="number" min="0" step="any" aria-label="Sample rate in Hz"/>
+      </div>
     </div>
 
     <!-- Action buttons -->
     <div class="tb-btn-group">
       <div class="tb-scale-control" role="group" aria-label="Vertical scale">
-        <button class="tb-scale-btn" id="scaleMinusBtn" type="button" aria-label="Decrease vertical scale" title="Decrease vertical scale">&minus;</button>
+        <button class="tb-scale-btn" id="scaleMinusBtn" type="button" aria-label="Decrease vertical scale" title="Decrease vertical scale">
+          <svg class="tb-scale-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
         <div class="tb-scale-readout">
           <span>Scale</span>
-          <output id="scaleValue" aria-live="polite">1&times;</output>
+          <output id="scaleValue" aria-live="polite">1.00&times;</output>
         </div>
-        <button class="tb-scale-btn" id="scalePlusBtn" type="button" aria-label="Increase vertical scale" title="Increase vertical scale">+</button>
+        <button class="tb-scale-btn" id="scalePlusBtn" type="button" aria-label="Increase vertical scale" title="Increase vertical scale">
+          <svg class="tb-scale-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
       </div>
-      <button class="tb-pill" id="fftBtn">FFT</button>
+      <button class="tb-pill" id="fftBtn" type="button" aria-pressed="false">
+        <svg class="tb-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-5M7.5 18V8m4.5 10V4m4.5 14v-7M21 18v-3"/></svg>
+        <span>FFT</span>
+      </button>
     </div>
 
     <button class="upload-btn" id="uploadBtn" type="button" onclick="document.getElementById('csvInput').click()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <svg class="tb-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <span class="upload-text" id="uploadText">Upload CSV</span>
     </button>
     <input id="csvInput" type="file" accept=".csv,text/csv" class="sr-only"/>
@@ -160,7 +169,7 @@
     </div>
     <div class="modal-input-row">
       <label for="modalSrInput">Sampling rate (Hz)</label>
-      <input id="modalSrInput" class="modal-big-input" type="number" min="0" step="any" placeholder="e.g.  250"/>
+      <input id="modalSrInput" class="modal-big-input" type="number" min="0" step="any"/>
     </div>
     <div class="modal-actions">
       <button class="modal-skip" id="modalSkip">Skip</button>

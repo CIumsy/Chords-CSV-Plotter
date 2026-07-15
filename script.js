@@ -37,7 +37,7 @@ const S = {
   sampleRate: null,      // samples per second, or null if unknown (no time axis)
   start: 0,              // index of the first visible row (horizontal scroll position)
   window: 1000,          // how many rows are visible at once (horizontal zoom)
-  scale: 1,              // vertical zoom multiplier (1 = auto-fit each channel's range)
+  scale: 1,              // vertical magnification selected in the Scale control
   fftOpen: false,        // whether the FFT side panel is open
   fileName: '',          // name of the currently loaded file, shown in the topbar badge
 };
@@ -72,10 +72,13 @@ const mainCtx = el.mainCanvas.getContext('2d');
 const fftCtx  = el.fftCanvas.getContext('2d');
 
 /* -- ZOOM LIMITS -- */
-// How far zoom is allowed to go. SCALE is the Y-zoom multiplier (1 = auto-fit
-// each channel's range). WIN_MIN is the smallest number of samples the X-axis
-// can be zoomed in to.
-const SCALE_MIN = 0.05, SCALE_MAX = 200;
+// Vertical scale uses deliberate, predictable stops: tenths through 1.00,
+// then whole-number steps through 10.00. WIN_MIN is the smallest number of
+// samples the X-axis can be zoomed in to.
+const VERTICAL_SCALE_VALUES = Object.freeze([
+  0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00,
+  2.00, 3.00, 4.00, 5.00, 6.00, 7.00, 8.00, 9.00, 10.00,
+]);
 // A settled view draws every sample up to 20,000. Live navigation temporarily
 // uses the bounded LOD preview so dragging and scrolling remain responsive.
 const WIN_MIN = 64, WIN_MAX = 20000, RAW_DRAW_MAX = WIN_MAX;
@@ -730,17 +733,37 @@ function buildFftChannelList() {
 
 /* ---- CONTROLS (sample-rate field, buttons, scroll, keyboard, FFT panel resize) ---- */
 /* -- VERTICAL SCALE -- */
+function closestVerticalScaleIndex(value) {
+  let closestIndex = 0;
+  let closestDistance = Infinity;
+  VERTICAL_SCALE_VALUES.forEach((candidate, index) => {
+    const distance = Math.abs(candidate - value);
+    if (distance < closestDistance) {
+      closestIndex = index;
+      closestDistance = distance;
+    }
+  });
+  return closestIndex;
+}
+
 function syncVerticalScaleControl() {
-  const displayScale = Number((1 / S.scale).toPrecision(3));
-  el.scaleValue.textContent = `${displayScale}×`;
-  el.scaleMinusBtn.disabled = S.scale >= SCALE_MAX;
-  el.scalePlusBtn.disabled = S.scale <= SCALE_MIN;
+  const scaleIndex = closestVerticalScaleIndex(S.scale);
+  S.scale = VERTICAL_SCALE_VALUES[scaleIndex];
+  el.scaleValue.textContent = `${S.scale.toFixed(2)}×`;
+  el.scaleMinusBtn.disabled = scaleIndex === 0;
+  el.scalePlusBtn.disabled = scaleIndex === VERTICAL_SCALE_VALUES.length - 1;
 }
 
 function setVerticalScale(nextScale) {
-  S.scale = clamp(nextScale, SCALE_MIN, SCALE_MAX);
+  S.scale = VERTICAL_SCALE_VALUES[closestVerticalScaleIndex(nextScale)];
   syncVerticalScaleControl();
   renderAll();
+}
+
+function stepVerticalScale(direction) {
+  const currentIndex = closestVerticalScaleIndex(S.scale);
+  const nextIndex = clamp(currentIndex + direction, 0, VERTICAL_SCALE_VALUES.length - 1);
+  if (nextIndex !== currentIndex) setVerticalScale(VERTICAL_SCALE_VALUES[nextIndex]);
 }
 
 /* -- SAMPLING RATE -- */
@@ -776,6 +799,10 @@ el.fileCloseBtn.addEventListener('click', () => {
   el.helpBtn.setAttribute('aria-label', 'Upload a CSV to view the guide');
   el.helpBtn.title = 'Upload a CSV to view the guide';
   el.fftCol.classList.remove('open');
+  el.fftHandle.style.display = 'none';
+  el.fftBtn.classList.remove('active');
+  el.fftBtn.setAttribute('aria-pressed', 'false');
+  el.fftCol.style.width = '';
   invalidateMinimap();
   syncVerticalScaleControl();
   buildChannelList(); renderAll();
@@ -783,13 +810,14 @@ el.fileCloseBtn.addEventListener('click', () => {
 });
 
 /* -- ACTION BUTTONS -- */
-el.scaleMinusBtn.addEventListener('click', () => setVerticalScale(S.scale * 1.2));
-el.scalePlusBtn.addEventListener('click', () => setVerticalScale(S.scale / 1.2));
+el.scaleMinusBtn.addEventListener('click', () => stepVerticalScale(-1));
+el.scalePlusBtn.addEventListener('click', () => stepVerticalScale(1));
 el.fftBtn.addEventListener('click',   () => {
   S.fftOpen = !S.fftOpen;
   el.fftCol.classList.toggle('open', S.fftOpen);
   el.fftHandle.style.display = S.fftOpen ? '' : 'none';
   el.fftBtn.classList.toggle('active', S.fftOpen);
+  el.fftBtn.setAttribute('aria-pressed', String(S.fftOpen));
   if (!S.fftOpen) el.fftCol.style.width = '';
   setTimeout(renderAll, 50);
 });
@@ -798,6 +826,7 @@ el.fftClose.addEventListener('click', () => {
   el.fftCol.classList.remove('open');
   el.fftHandle.style.display = 'none';
   el.fftBtn.classList.remove('active');
+  el.fftBtn.setAttribute('aria-pressed', 'false');
   el.fftCol.style.width = '';
   setTimeout(renderAll, 50);
 });
@@ -1460,7 +1489,7 @@ function drawMain() {
     const range = S.channelRanges[s.ci] || { lo: -1, hi: 1 };
     const { lo, hi } = range;
     const center    = (lo + hi) / 2;
-    const halfRange = Math.max((hi - lo) / 2, 1e-12) * S.scale * 1.1;
+    const halfRange = Math.max((hi - lo) / 2, 1e-12) / S.scale * 1.1;
     const yMin = center - halfRange;
     const yMax = center + halfRange;
 
