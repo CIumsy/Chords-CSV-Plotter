@@ -11,7 +11,7 @@
 </head>
 <body>
 
-<!-- TOP BAR -->
+<!-- Top bar -->
 <header class="topbar">
   <div class="logo">
     <img id="chordsLogo" src="ChordsWhite.svg" alt="Chords logo"/>
@@ -27,7 +27,7 @@
       </div>
     </div>
 
-    <!-- Action buttons -->
+    <!-- Plot controls -->
     <div class="tb-btn-group">
       <div class="tb-scale-control" role="group" aria-label="Vertical scale">
         <button class="tb-scale-btn" id="scaleMinusBtn" type="button" aria-label="Decrease vertical scale" title="Decrease vertical scale">
@@ -57,10 +57,10 @@
   </div>
 </header>
 
-<!-- LAYOUT -->
+<!-- App layout -->
 <div class="layout">
 
-  <!-- Toggleable channels sidebar and loaded filename -->
+  <!-- Channels and file name -->
   <aside class="sidebar" id="sidebar">
     <button class="ch-header" id="sidebarToggle" type="button" aria-expanded="false" aria-controls="chList" aria-label="Expand channels" title="Expand channels">
       <svg class="ch-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -80,15 +80,15 @@
     </div>
   </aside>
 
-  <!-- WORKSPACE -->
+  <!-- Workspace -->
   <div class="workspace">
 
 
-    <!-- Main area: plot + FFT -->
+    <!-- Plot and FFT -->
     <div class="main-area" id="mainArea">
 
       <div class="plot-col">
-        <!-- Scrollable canvas wrapper -->
+        <!-- Plot canvas -->
         <div class="canvas-wrap" id="canvasWrap">
           <div class="canvas-scroll" id="canvasScroll">
             <canvas id="mainCanvas"></canvas>
@@ -107,7 +107,7 @@
           </div>
         </div>
 
-        <!-- Full-recording minimap: drag the window to pan, drag either edge to zoom -->
+        <!-- Minimap navigation -->
         <div class="timeline minimap-wrap disabled" id="minimapWrap" aria-label="Data overview and horizontal navigation">
           <span class="timeline-label minimap-offset-label minimap-offset-label--left" id="tlStart">0</span>
           <span class="timeline-label minimap-offset-label minimap-offset-label--right" id="tlEnd">0</span>
@@ -133,7 +133,7 @@
         </div>
       </div>
 
-      <!-- FFT resize handle (hidden when closed) -->
+      <!-- FFT resize handle -->
       <div class="resize-handle-v" id="fftHandle" style="display:none">
         <div class="drag-pill">
           <span></span><span></span><span></span>
@@ -160,7 +160,7 @@
   </div>
 </div>
 
-<!-- SAMPLING RATE MODAL -->
+<!-- Sample rate modal -->
 <div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="modal">
     <div>
@@ -178,7 +178,7 @@
   </div>
 </div>
 
-<!-- TOUR SYSTEM -->
+<!-- Tour -->
 <div class="tour-dim"     id="tourDim"></div>
 <div class="tour-highlight" id="tourHL"></div>
 <div class="tour-card"    id="tourCard" role="dialog" aria-modal="true" aria-label="Tour tip">

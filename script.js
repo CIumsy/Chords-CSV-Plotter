@@ -1,50 +1,54 @@
-// All the JavaScript for Chords CSV Plotter, in one file.
-// It is split into 9 sections, in the order they run:
-//   1. APP STATE & HELPERS - shared state, DOM lookups, zoom math, small utils
-//   2. THEME TOGGLE - light/dark switch
-//   3. CSV LOADING - parsing a file and the sampling-rate prompt
-//   4. CHANNEL LISTS - sidebar checkboxes and FFT channel picker
-//   5. CONTROLS - sample-rate field, buttons, scrolling, keyboard, FFT resize
-//   6. MAIN PLOT RENDERING - draws the waveform canvas
-//   7. FFT - frequency-spectrum math and drawing
-//   8. RENDER LOOP & STARTUP - runs the draw functions above and starts the app
-//   9. ONBOARDING TOUR - the walkthrough popup
-// Search for the section names above to jump to a part.
+/*
+Code sections:
+1. App state and helpers
+2. Theme
+3. CSV loading
+4. Channel lists
+5. Controls
+6. Main plot
+7. FFT
+8. Rendering and startup
+9. Tour
+*/
 
-/* ---- APP STATE & HELPERS (S = current data/view, el = DOM cache, zoom math, small utils) ---- */
-/* -- TRACK COLORS -- */
-// Each channel is assigned one of these colors, in order, cycling if there
-// are more channels than colors. Colors themselves are defined as CSS
-// variables in style.css so light/dark themes can each have their own set.
+// App state and helpers: track colors
+/*
+Channels use these colors in order.
+The CSS variables provide colors for each theme.
+*/
 const TRACKS = ['--c1','--c2','--c3','--c4','--c5','--c6','--c7','--c8'];
 function trackColor(i) {
   return cssVar(TRACKS[i % TRACKS.length]);
 }
 
-/* -- APP STATE -- */
-// This object holds everything about the currently-loaded CSV and the
-// current view. Nothing here is persisted - reloading the page resets it.
+// App state
+/*
+This stores the loaded CSV and current view.
+Reloading the page resets it.
+*/
 const S = {
-  headers: [],          // column names, e.g. ['Time','CH1','CH2']
-  numericIdx: [],        // indices of headers that contain numeric data
-  columns: {},           // numeric columns stored as Float32Array by original column index
-  rowCount: 0,           // total number of samples in each numeric column
-  overview: {},          // fixed-resolution min/max buckets used only by the minimap
-  lod: {},               // multiresolution min/max levels for fast zoomed-out plotting
-  selected: new Set(),   // numericIdx values currently shown on the main plot
-  fftChannels: new Set(),// numericIdx values currently shown in the FFT panel
-  channelRanges: {},     // { [numericIdx]: {lo, hi} } min/max per channel, for autoscale
-  sampleRate: null,      // samples per second, or null if unknown (no time axis)
-  start: 0,              // index of the first visible row (horizontal scroll position)
-  window: 1000,          // how many rows are visible at once (horizontal zoom)
-  scale: 1,              // vertical magnification selected in the Scale control
-  fftOpen: false,        // whether the FFT side panel is open
-  fileName: '',          // name of the currently loaded file, shown in the topbar badge
+  headers: [],          // CSV column names
+  numericIdx: [],        // Numeric column indexes
+  columns: {},           // Numeric columns stored by index
+  rowCount: 0,           // Samples per numeric column
+  overview: {},          // Minimap min and max buckets
+  lod: {},               // Plot detail levels
+  selected: new Set(),   // Channels shown on the plot
+  fftChannels: new Set(),// Channels shown in FFT
+  channelRanges: {},     // Minimum and maximum per channel
+  sampleRate: null,      // Samples per second
+  start: 0,              // First visible sample
+  window: 1000,          // Visible sample count
+  scale: 1,              // Vertical scale
+  fftOpen: false,        // FFT panel state
+  fileName: '',          // Loaded file name
 };
 
-/* -- DOM ELEMENT CACHE -- */
-// Every element the app touches is looked up once here by id, then reused
-// everywhere else as el.someName instead of calling getElementById again.
+// DOM elements
+/*
+Elements are found once by ID.
+Use el.name to access them later.
+*/
 const $ = id => document.getElementById(id);
 const el = {
   csvInput: $('csvInput'), uploadBtn: $('uploadBtn'), uploadText: $('uploadText'), helpBtn: $('helpBtn'), themeBtn: $('themeBtn'),
@@ -71,21 +75,24 @@ const el = {
 const mainCtx = el.mainCanvas.getContext('2d');
 const fftCtx  = el.fftCanvas.getContext('2d');
 
-/* -- ZOOM LIMITS -- */
-// Vertical scale uses deliberate, predictable stops: tenths through 1.00,
-// then whole-number steps through 10.00. WIN_MIN is the smallest number of
-// samples the X-axis can be zoomed in to.
+// Scale and window limits
+/*
+Vertical scale uses tenths through 1 and whole numbers through 10.
+WIN_MIN is the smallest horizontal window.
+*/
 const VERTICAL_SCALE_VALUES = Object.freeze([
   0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00,
   2.00, 3.00, 4.00, 5.00, 6.00, 7.00, 8.00, 9.00, 10.00,
 ]);
-// A settled view draws every sample up to 20,000. Live navigation temporarily
-// uses the bounded LOD preview so dragging and scrolling remain responsive.
+/*
+Static views draw up to 20,000 samples.
+Navigation uses a limited preview for speed.
+*/
 const WIN_MIN = 64, WIN_MAX = 20000, RAW_DRAW_MAX = WIN_MAX;
 const INTERACTIVE_RAW_MAX = 4096, FFT_MAX_SAMPLES = 32768;
 const coarsePointerQuery = window.matchMedia('(any-pointer: coarse)');
 
-/* -- GENERIC HELPERS -- */
+// Helpers
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const fmt   = (v, d=3) => Number.isFinite(v) ? v.toFixed(d) : '-';
 const fmtN  = v => Number.isFinite(v) ? Math.round(v).toLocaleString() : '0';
@@ -113,9 +120,10 @@ function invalidateVisualStyleCache() {
 }
 function cssRem(valueInPixels) { return `${valueInPixels / rootRemPixels()}rem`; }
 
-// Canvas backing stores use physical screen pixels, while all drawing code
-// uses CSS coordinates. Keeping the exact effective scale prevents the browser
-// from resampling text and hairlines on fractional-DPR or zoomed displays.
+/*
+Canvas storage uses screen pixels.
+Drawing uses CSS coordinates to keep text and lines sharp.
+*/
 const canvasMetrics = new WeakMap();
 function canvasScale(ctx) {
   return canvasMetrics.get(ctx.canvas) || { x: 1, y: 1 };
@@ -144,8 +152,7 @@ function useCrispHairline(ctx) {
 }
 
 
-// Horizontal view changes all pass through one function so pan/zoom controls,
-// keyboard shortcuts, and the minimap cannot leave start/window out of range.
+// Keep every horizontal view change within the data range
 function minHorizontalWindow() {
   return Math.min(WIN_MIN, Math.max(1, S.rowCount));
 }
@@ -170,7 +177,7 @@ let minimapDirty = true;
 function invalidateMinimap() { minimapDirty = true; }
 
 
-/* ---- THEME TOGGLE (light/dark) ---- */
+// Theme
 function setThemeIcon() {
   const dark = document.documentElement.dataset.theme === 'dark';
   el.chordsLogo.src = dark ? 'ChordsWhite.svg' : 'ChordsBlack.svg';
@@ -184,7 +191,7 @@ el.themeBtn.addEventListener('click', () => {
   d.dataset.theme = d.dataset.theme === 'dark' ? 'light' : 'dark';
   invalidateVisualStyleCache();
   setThemeIcon();
-  buildChannelList(); // channel checkbox colors are read live via trackColor()
+  buildChannelList(); // Refresh channel colors
   invalidateMinimap();
   renderAll();
 });
@@ -192,9 +199,7 @@ el.themeBtn.addEventListener('click', () => {
 setThemeIcon();
 
 
-/* ---- CSV LOADING (parsing + the "set sampling rate" prompt) ---- */
-// Serializing this function into a Blob keeps the worker available when the
-// app is opened directly with file://, where external worker scripts are blocked.
+// CSV loading with a Blob worker for local files
 function csvParserWorkerMain() {
   'use strict';
 
@@ -447,8 +452,8 @@ function csvParserWorkerMain() {
 
 }
 
-/* -- LOAD FILE -- */
-let pendingParsed = null; // parsed CSV waiting on the sampling-rate modal
+// File loading
+let pendingParsed = null; // Parsed CSV waiting for sample rate
 let parseWorker = null;
 
 function setParsingState(active, progress = 0, fileName = '') {
@@ -553,8 +558,10 @@ async function handleFile(file) {
   setTimeout(() => el.modalSrInput.focus(), 60);
 }
 
-// Applies the parsed CSV (+ optional sampling rate) to app state and
-// refreshes every dependent UI piece. Called after the modal is dismissed.
+/*
+Save the parsed CSV and optional sample rate.
+Then refresh the related controls.
+*/
 function commitLoad(sr) {
   if (!pendingParsed) return;
   const { headers, numericIdx, rowCount, columns, overview, lod, ranges } = pendingParsed;
@@ -565,7 +572,7 @@ function commitLoad(sr) {
   setHorizontalView(0, Math.min(1000, Math.max(1, rowCount))); S.scale = 1;
   S.selected.clear();
   S.fftChannels.clear();
-  // Preselect columns that look like signal channels; otherwise just take the first 8.
+  // Select up to eight likely signal columns
   const preferred = numericIdx.filter(i => /ch|lead|bio|adc|signal/i.test(headers[i]));
  (preferred.length ? preferred : numericIdx).slice(0, 8).forEach(i => {
     S.selected.add(i);
@@ -606,7 +613,7 @@ el.csvInput.addEventListener('change', e => {
 });
 el.emptyUploadBtn.addEventListener('click', () => el.csvInput.click());
 
-/* -- EMPTY-STATE CSV DRAG AND DROP -- */
+// Empty-state file drop
 let emptyDragDepth = 0;
 function dragContainsFiles(event) {
   return Array.from(event.dataTransfer?.types || []).includes('Files') || Boolean(event.dataTransfer?.files?.length);
@@ -649,10 +656,9 @@ el.canvasWrap.addEventListener('drop', event => {
 document.addEventListener('dragend', clearEmptyDragState);
 
 
-/* ---- CHANNEL LISTS (sidebar checkboxes + FFT channel picker pills) ---- */
-/* Channel ranges and overview buckets are computed once by the parser worker. */
+// The worker calculates channel ranges and overview buckets once
 
-/* -- SIDEBAR CHANNEL LIST -- */
+// Sidebar channel list
 function buildChannelList() {
   el.chList.innerHTML = '';
   if (!S.numericIdx.length) {
@@ -664,7 +670,7 @@ function buildChannelList() {
     item.className = 'ch-item' + (S.selected.has(ci) ? ' checked' : '');
     const cb = document.createElement('input');
     cb.type = 'checkbox'; cb.className = 'ch-cb'; cb.checked = S.selected.has(ci);
-    cb.style.accentColor = trackColor(idx); // checkbox itself is tinted per-channel
+    cb.style.accentColor = trackColor(idx); // Match the checkbox to its channel
     cb.addEventListener('change', () => {
       if (cb.checked) S.selected.add(ci); else S.selected.delete(ci);
       item.className = 'ch-item' + (S.selected.has(ci) ? ' checked' : '');
@@ -680,7 +686,7 @@ function buildChannelList() {
   buildFftChannelList();
 }
 
-/* -- FFT CHANNEL SELECTOR (single-select pill bar) -- */
+// FFT channel selector
 function buildFftChannelList() {
   el.fftChBar.innerHTML = '';
   const visibleChannels = S.numericIdx
@@ -692,7 +698,7 @@ function buildFftChannelList() {
     return;
   }
 
-  // Exactly one channel must be active for the FFT panel at all times.
+  // Keep one FFT channel selected
   const hasValid = visibleChannels.some(({ ci }) => S.fftChannels.has(ci));
   if (!hasValid) {
     S.fftChannels.clear();
@@ -731,8 +737,7 @@ function buildFftChannelList() {
 }
 
 
-/* ---- CONTROLS (sample-rate field, buttons, scroll, keyboard, FFT panel resize) ---- */
-/* -- VERTICAL SCALE -- */
+// Controls: vertical scale
 function closestVerticalScaleIndex(value) {
   let closestIndex = 0;
   let closestDistance = Infinity;
@@ -766,14 +771,14 @@ function stepVerticalScale(direction) {
   if (nextIndex !== currentIndex) setVerticalScale(VERTICAL_SCALE_VALUES[nextIndex]);
 }
 
-/* -- SAMPLING RATE -- */
+// Sample rate
 el.srInput.addEventListener('input', () => {
   const n = parseFloat(el.srInput.value);
   S.sampleRate = n > 0 ? n : null;
   renderAll();
 });
 
-/* -- CHANNEL SIDEBAR TOGGLE -- */
+// Channel sidebar toggle
 el.sidebarToggle.addEventListener('click', () => {
   const expanded = el.sidebar.classList.toggle('expanded');
   el.sidebarToggle.setAttribute('aria-expanded', String(expanded));
@@ -783,7 +788,7 @@ el.sidebarToggle.addEventListener('click', () => {
   renderAll();
 });
 
-/* -- FILE CLOSE (unload CSV, reset to fresh state) -- */
+// File close and reset
 el.fileCloseBtn.addEventListener('click', () => {
   S.headers = []; S.numericIdx = []; S.columns = {}; S.rowCount = 0;
   S.overview = {}; S.lod = {};
@@ -809,7 +814,7 @@ el.fileCloseBtn.addEventListener('click', () => {
   document.dispatchEvent(new CustomEvent('csvplotter:data-cleared'));
 });
 
-/* -- ACTION BUTTONS -- */
+// Action buttons
 el.scaleMinusBtn.addEventListener('click', () => stepVerticalScale(-1));
 el.scalePlusBtn.addEventListener('click', () => stepVerticalScale(1));
 el.fftBtn.addEventListener('click',   () => {
@@ -832,11 +837,11 @@ el.fftClose.addEventListener('click', () => {
 });
 
 
-/* -- WHEEL / TRACKPAD SCROLL & PINCH-ZOOM -- */
+// Wheel and trackpad controls
 el.canvasWrap.addEventListener('wheel', e => {
   if (!S.rowCount) return;
 
-  // Pinch zoom on trackpad (Ctrl+wheel) → Zoom X, centered on current view
+  // Pinch to zoom around the view center
   if (e.ctrlKey) {
     e.preventDefault();
     const oldW = S.window;
@@ -861,7 +866,7 @@ el.canvasWrap.addEventListener('wheel', e => {
     return;
   }
 
-  // Vertical: if canvas is taller than wrapper, let native scroll handle it
+  // Use normal vertical scroll when the canvas is taller
   if (canScrollV) return;
 
   e.preventDefault();
@@ -871,7 +876,7 @@ el.canvasWrap.addEventListener('wheel', e => {
   }
 }, { passive: false });
 
-/* -- KEYBOARD NAVIGATION -- */
+// Keyboard navigation
 window.addEventListener('keydown', e => {
   if (e.target.matches('input,textarea,select') || e.target.isContentEditable) return;
   const W = Math.max(1, Math.floor(S.window * 0.1));
@@ -885,9 +890,11 @@ window.addEventListener('keydown', e => {
   }
 });
 
-/* -- FFT PANEL RESIZE -- */
-// The handle sits on the LEFT edge of the FFT panel, so dragging left grows
-// the panel (drag direction is inverted vs. a normal right-edge handle).
+// FFT panel resize
+/*
+The handle is on the left edge.
+Dragging left makes the panel wider.
+*/
 (function initFftResize() {
   let dragging = false, startX = 0, startW = 0;
 
@@ -937,7 +944,7 @@ window.addEventListener('keydown', e => {
 })();
 
 
-/* -- SCRUBBER MINIMAP (full-data overview + pan + edge-resize zoom) -- */
+// Minimap
 function sizeMinimapCanvas() {
   const rect = el.minimapTrack.getBoundingClientRect();
   const cssW = Math.max(1, rect.width);
@@ -957,9 +964,10 @@ function sizeMinimapCanvas() {
   return { ctx, width: cssW, height: cssH, changed };
 }
 
-// Draw a min/max envelope for the full file, like the NPG-Lite Cardio
-// recording scrubber. Up to four visible channels are overlaid by color.
-// The canvas is cached: panning/resizing only moves the viewport DOM element.
+/*
+Draw the full-file min and max envelope for up to four channels.
+Panning and resizing reuse the cached canvas.
+*/
 function drawMinimap() {
   const sized = sizeMinimapCanvas();
   if (!minimapDirty && !sized.changed) return;
@@ -1037,9 +1045,10 @@ function minimapDisplayWidth(total, trackWidth, windowSize) {
   const { minimumWidth, largestCompressedWidth } = minimapCompressedScale(trackWidth);
   if (!usesCompressedMinimap(total, trackWidth) || windowSize >= total) return exactWidth;
 
-  // A proportional window can be smaller than a screen pixel in a multi-hour
-  // file. Use a logarithmic display scale in that case so every allowed zoom
-  // level remains usable and resizing is still visibly reflected.
+  /*
+  Long files can make the proportional window too small.
+  A logarithmic size keeps every zoom level usable.
+  */
   const smallestWindow = minHorizontalWindow();
   const largestWindow = maxHorizontalWindow();
   const logSpan = Math.log(Math.max(1, largestWindow / smallestWindow));
@@ -1317,7 +1326,7 @@ function updateMinimapViewport() {
       return;
     }
 
-    // Clicking outside the window jumps it there and starts a pan drag.
+    // Click outside the window to move and start dragging
     const displayWidth = minimapDisplayWidth(S.rowCount, rect.width, S.window);
     const viewportTravel = Math.max(1, rect.width - displayWidth);
     const targetLeft = e.clientX - rect.left - displayWidth / 2;
@@ -1354,7 +1363,7 @@ function updateMinimapViewport() {
   document.addEventListener('pointercancel', endDrag);
   window.addEventListener('blur', () => endDrag());
 
-  // Keyboard navigation when the minimap window is focused.
+  // Minimap keyboard navigation
   el.minimapViewport.addEventListener('keydown', e => {
     if (!S.rowCount) return;
     const step = Math.max(1, Math.round(S.window * (e.shiftKey ? 0.25 : 0.05)));
@@ -1370,8 +1379,7 @@ function updateMinimapViewport() {
 })();
 
 
-/* ---- MAIN PLOT RENDERING (draws the multi-channel waveform canvas) ---- */
-/* -- CANVAS SIZING (device-pixel-ratio aware) -- */
+// Main plot: canvas sizing
 function sizeCanvas(canvas, w, h) {
   const dpr = Math.max(1, window.devicePixelRatio || 1);
   const pw = Math.max(10, Math.round(w * dpr));
@@ -1384,7 +1392,7 @@ function sizeCanvas(canvas, w, h) {
   return { w, h };
 }
 
-/* -- CURRENT WINDOW DATA -- */
+// Visible data
 function visibleSeries() {
   return S.numericIdx
     .map((ci, idx) => ({
@@ -1400,8 +1408,10 @@ function visibleSeries() {
 
 function chooseEnvelopeLodIndex(levels, samplesPerPixel) {
   let chosenIndex = -1;
-  // Keep the cached bucket no wider than one screen column. Any partial
-  // range is assembled from smaller aligned buckets or original samples.
+  /*
+  Keep each cached bucket within one screen column.
+  Build partial ranges from smaller buckets or raw samples.
+  */
   for (let index = 0; index < levels.length; index++) {
     const level = levels[index];
     if (level.bucketSize > samplesPerPixel) break;
@@ -1410,7 +1420,7 @@ function chooseEnvelopeLodIndex(levels, samplesPerPixel) {
   return chosenIndex;
 }
 
-/* -- MAIN PLOT RENDERING -- */
+// Main plot rendering
 const MARGIN = { top: 20, right: 14, bottom: 32, left: 62 };
 const MIN_BAND = 80;
 const PREF_BAND = 130;
@@ -1419,8 +1429,7 @@ function drawMain() {
   const N = S.numericIdx.filter(i => S.selected.has(i)).length;
   const visibleCount = Math.max(0, Math.min(S.window, S.rowCount - S.start));
 
-  // The plot's bottom-axis gap and the minimap's outer spacing use the same
-  // responsive inset, keeping the axis-to-minimap distance visually uniform.
+  // Match the plot and minimap spacing
   MARGIN.bottom = .75 * rootRemPixels();
 
   const wrapH = el.canvasWrap.getBoundingClientRect().height || 400;
@@ -1441,7 +1450,7 @@ function drawMain() {
   mainCtx.fillStyle = cssVar('--surf');
   mainCtx.fillRect(0, 0, canvasW, canvasH);
 
-  // Dynamic left margin: measure widest Y-axis label across visible channels
+  // Fit the left margin to the widest Y label
   mainCtx.font = `.625rem ${cssVar('--mono')}`;
   let dynLeft = 44;
   for (const ci of S.numericIdx) {
@@ -1528,8 +1537,7 @@ function drawMain() {
     const samplesPerPixel = visibleCount / Math.max(1, plotW);
     const useRawLine = visibleCount <= RAW_DRAW_MAX
       && (!interactiveRendering || visibleCount <= INTERACTIVE_RAW_MAX);
-    // Round joins require extra geometry at every sample. Bevel/butt keeps the
-    // same connected trace while making raw navigation substantially cheaper.
+    // Bevel joins and flat ends reduce drawing work
     mainCtx.lineJoin = 'bevel';
     mainCtx.lineCap = 'butt';
     mainCtx.beginPath();
@@ -1549,17 +1557,20 @@ function drawMain() {
         else mainCtx.lineTo(x, y);
       }
     } else {
-      // Draw at most one exact min/max envelope per CSS screen column. This
-      // gives every zoom level the same canvas workload instead of allowing
-      // factor-8 LOD transitions to spike to several segments per pixel.
+      /*
+      Draw one min and max range per screen column.
+      This keeps drawing work stable at every zoom level.
+      */
       const displayColumns = Math.max(1, Math.min(Math.ceil(plotW), visibleCount));
       const maxLodIndex = chooseEnvelopeLodIndex(s.levels, samplesPerPixel);
       const ySpan = Math.max(1e-12, yMax - yMin);
       const yScale = innerH / ySpan;
       const minimumStrokeHeight = 1 / canvasScale(mainCtx).y;
 
-      // Keep a continuous actual-data trace visible during the lightweight
-      // preview. The min/max segments below preserve every column's extremes.
+      /*
+      Draw a continuous preview from real samples.
+      The ranges below keep each column's extremes.
+      */
       let representativeStarted = false;
       for (let column = 0; column < displayColumns; column++) {
         const sampleStart = S.start + Math.floor((column / displayColumns) * visibleCount);
@@ -1643,7 +1654,7 @@ function drawMain() {
   drawTimeAxis(mainCtx, canvasW, canvasH, plotW, visibleCount);
 }
 
-// Sample-index ticks along the top of the plot (always shown once data is loaded).
+// Draw sample indexes above the plot
 function drawPointAxis(ctx, plotW, rowCount) {
   if (!rowCount) return;
   ctx.save();
@@ -1658,7 +1669,7 @@ function drawPointAxis(ctx, plotW, rowCount) {
   ctx.restore();
 }
 
-// Time ticks along the bottom - only drawn once a sampling rate is known.
+// Draw time below the plot when sample rate is known
 function drawTimeAxis(ctx, cw, ch, plotW, rowCount) {
   if (!S.sampleRate) return;
   ctx.save();
@@ -1674,11 +1685,13 @@ function drawTimeAxis(ctx, cw, ch, plotW, rowCount) {
 }
 
 
-/* ---- FFT (frequency-spectrum math + draws the FFT panel canvas) ---- */
+// FFT
 function nextPow2(n) { let p = 1; while (p < n) p <<= 1; return p; }
 
-// In-place iterative FFT (Cooley-Tukey, radix-2). `re`/`im` must have a
-// power-of-2 length; results are written back into them.
+/*
+Run a radix-2 FFT in place.
+The real and imaginary arrays need a power-of-two length.
+*/
 function fftIP(re, im) {
   const n = re.length; let j = 0;
   for (let i = 0; i < n; i++) {
@@ -1703,8 +1716,10 @@ function fftIP(re, im) {
   }
 }
 
-// Returns magnitude spectrum for a real-valued signal (mean-subtracted,
-// zero-padded to the next power of 2).
+/*
+Return the magnitude spectrum of a real signal.
+Remove its mean and pad it to a power-of-two length.
+*/
 function fftMags(signal) {
   const n0 = signal.length, n = nextPow2(Math.max(8, n0));
   const re = new Float64Array(n), im = new Float64Array(n);
@@ -1716,7 +1731,7 @@ function fftMags(signal) {
   return { mags, n };
 }
 
-/* -- FFT PANEL RENDERING -- */
+// FFT rendering
 function drawFFT() {
   if (!S.fftOpen) return;
   const rect = el.fftCanvas.getBoundingClientRect();
@@ -1746,7 +1761,7 @@ function drawFFT() {
       return { ...s, vals };
     });
 
-  // Compute magnitudes first so we know globalMax for a dynamic Y margin
+  // Find the largest magnitude before drawing
   let globalMax = 0;
   const computed = fftSeries.slice(0, 8).map(s => {
     const { mags, n } = fftMags(s.vals);
@@ -1758,7 +1773,7 @@ function drawFFT() {
   });
   globalMax = globalMax || 1;
 
-  // Dynamic left margin based on widest Y-label
+  // Fit the left margin to the widest Y label
   fftCtx.font = `.625rem ${cssVar('--mono')}`;
   let maxLabelW = 0;
   for (let i = 0; i <= 4; i++) {
@@ -1797,7 +1812,7 @@ function drawFFT() {
     return;
   }
 
-  // Draw each channel's spectrum line
+  // Spectrum lines
   fftCtx.save();
   fftCtx.beginPath();
   fftCtx.rect(M.left, M.top, pW, pH);
@@ -1820,7 +1835,7 @@ function drawFFT() {
   });
   fftCtx.restore();
 
-  // Legend (top-right, with colored lines)
+  // Legend
   const legendX = M.left + pW - 4;
   let legendY = M.top + 6;
   computed.forEach(s => {
@@ -1862,14 +1877,14 @@ function drawFFTAxes(ctx, M, pW, pH, W, H, maxFreq, globalMax) {
   ctx.fillStyle = cssVar('--muted');
   ctx.font = `.625rem ${cssVar('--mono')}`;
 
-  // Y labels (magnitude)
+  // Magnitude labels
   ctx.textAlign = 'right';
   for (let i = 0; i <= 4; i++) {
     const y = snapDeviceY(ctx, M.top + (i / 4) * pH + 4);
     ctx.fillText(fmtLbl(globalMax * (1 - i / 4)), snapDeviceX(ctx, M.left - 3), y);
   }
 
-  // X labels (frequency)
+  // Frequency labels
   ctx.textAlign = 'center';
   const tickCount = Math.min(6, Math.floor(pW / 40));
   for (let i = 0; i <= tickCount; i++) {
@@ -1882,16 +1897,17 @@ function drawFFTAxes(ctx, M, pW, pH, W, H, maxFreq, globalMax) {
 }
 
 
-/* ---- RENDER LOOP & STARTUP (ties plot+FFT together; last section runs on page load) ---- */
-/* -- MINIMAP SYNC -- */
+// Rendering and startup: minimap update
 function updateTimeline() {
   updateMinimapViewport();
   drawMinimap();
 }
 
-/* -- MAIN RENDER LOOP -- */
-// All state-changing code calls renderAll() rather than drawing directly;
-// this coalesces bursts of changes (e.g. drag events) into one frame.
+// Main render loop
+/*
+State changes call renderAll.
+It combines many changes into one frame.
+*/
 let raf = 0;
 let fftTimer = 0;
 let wheelSettleTimer = 0;
@@ -1913,11 +1929,9 @@ function renderInteractive() {
   if (raf) return;
   raf = requestAnimationFrame(timestamp => {
     raf = 0;
-    // The overview canvas does not change while navigating. Updating only the
-    // DOM viewport avoids a forced canvas measurement on every pointer frame.
+    // Move only the minimap window during navigation
     updateMinimapViewport();
-    // The lightweight minimap follows every display frame; waveform work is
-    // independently capped near 30 FPS with a scale-independent draw budget.
+    // Limit waveform updates to about 30 frames per second
     if (timestamp - lastInteractiveMainDraw >= 32) {
       lastInteractiveMainDraw = timestamp;
       drawMain();
@@ -1950,7 +1964,7 @@ function renderAll() {
   });
 }
 
-/* -- RESIZE HANDLING -- */
+// Resize handling
 const ro = new ResizeObserver(entries => {
   if (entries.some(entry => entry.target === el.minimapTrack)) invalidateMinimap();
   renderAll();
@@ -1972,8 +1986,7 @@ window.addEventListener('resize', () => {
   renderAll();
 }, { passive: true });
 
-// A window can move between displays without changing its CSS dimensions.
-// Re-register after every density change so the backing stores are rebuilt.
+// Rebuild canvases when display density changes
 function watchDevicePixelRatio() {
   const densityQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
   const handleDensityChange = () => {
@@ -1997,17 +2010,17 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', renderAll, { passive: true });
 }
 
-// Canvas text must be redrawn once the requested web fonts replace fallbacks.
+// Redraw canvas text after fonts load
 if (document.fonts && document.fonts.ready) {
   document.fonts.ready.then(renderAll);
 }
 
-/* -- INIT -- */
+// Startup
 syncVerticalScaleControl();
 renderAll();
 
 
-/* ---- ONBOARDING TOUR (spotlight walkthrough, independent of everything above) ---- */
+// Tour
 (function() {
 'use strict';
 
@@ -2162,7 +2175,7 @@ function positionCard(rect, arrow) {
       left = chosen.left;
       arrowDir = chosen.arrow;
     } else {
-      // Never cover a highlighted control on a viewport too small to fit both.
+      // Center the card when it cannot fit beside the target
       top = clampY((vh - cardH) / 2);
       left = clampX((vw - cardW) / 2);
       fits = false;
@@ -2243,7 +2256,7 @@ helpBtn.addEventListener('click', startTour);
 document.addEventListener('csvplotter:data-loaded', () => {
   if (active || autoTourScheduled || localStorage.getItem(TOUR_SEEN_KEY)) return;
   autoTourScheduled = true;
-  // Let the plot and minimap finish their first render before measuring targets.
+  // Wait for the first plot and minimap render
   setTimeout(() => {
     autoTourScheduled = false;
     if (S.rowCount && !active && !localStorage.getItem(TOUR_SEEN_KEY)) startTour();

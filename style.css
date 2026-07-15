@@ -1,14 +1,12 @@
-/* All the CSS for Chords CSV Plotter, in one file.
-   It is split into 3 sections, in this order:
-     1. BASE STYLES - color variables (light/dark) and resets
-     2. LAYOUT - topbar, sidebar, plot area, FFT panel, modal, responsive rules
-     3. ONBOARDING TOUR - the walkthrough popup
-   Search for the section names above to jump to a part.
-   Colors and fonts are CSS variables set in section 1 - change them there,
-   not in individual rules. */
+/*
+  Main sections:
+  1. Theme and base styles
+  2. App layout and controls
+  3. Guided tour
+  Change shared colors and fonts in the theme variables below.
+*/
 
-/* ---- BASE STYLES: color tokens (light/dark) + resets ---- */
-/* -- DESIGN TOKENS -- */
+/* Theme variables */
 :root,[data-theme="light"]{
   --bg:#f2f0eb; --surf:#faf9f6; --surf2:#f4f2ee; --surf3:#eceae4;
   --border:rgba(40,37,29,0.14); --divider:rgba(40,37,29,0.07);
@@ -45,11 +43,11 @@
   --logo-color:#fff;
 }
 
-/* -- RESET & BASE -- */
+/* Base element styles */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
-  /* Fluid root: stays 1rem at common widths, then scales gently on large screens. */
+  /* Scale text slightly on wide screens. */
   font-size:clamp(1rem, 0.9vw, 1.25rem);
 }
 body{
@@ -65,7 +63,7 @@ input[type="number"]{-moz-appearance:textfield;appearance:textfield}
 canvas{display:block}
 .sr-only{position:absolute;width:.0625rem;height:.0625rem;clip:rect(0,0,0,0);overflow:hidden}
 
-/* -- SCROLLBAR -- */
+/* Scrollbars */
 ::-webkit-scrollbar{width:.3125rem;height:.3125rem}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--faint);border-radius:.5625rem}
@@ -76,8 +74,7 @@ canvas{display:block}
 }
 
 
-/* ---- LAYOUT: topbar, sidebar, plot workspace, FFT panel, modal, responsive ---- */
-/* -- TOP BAR -- */
+/* Top bar */
 .topbar{
   --topbar-button-height:1.625rem;
   --topbar-fft-width:3.5rem;
@@ -98,7 +95,7 @@ canvas{display:block}
 }
 .logo img{width:1.375rem;height:1.375rem;border-radius:.3125rem;flex-shrink:0}
 
-/* Right-aligned controls strip */
+/* Right-side controls */
 .topbar-controls{
   display:flex;align-items:center;gap:.625rem;justify-content:flex-end;
   min-width:0;margin-left:auto;flex:0 1 auto;
@@ -124,7 +121,7 @@ canvas{display:block}
 }
 .tb-input::placeholder{color:var(--faint);opacity:1}
 
-/* Topbar action buttons */
+/* Top bar action buttons */
 .tb-btn-group{display:flex;align-items:center;gap:.625rem;height:var(--topbar-button-height);flex-shrink:0}
 .tb-scale-control{
   width:8.125rem;display:flex;align-items:center;height:var(--topbar-button-height);overflow:hidden;flex-shrink:0;
@@ -162,7 +159,7 @@ canvas{display:block}
 .tb-pill:hover{background:var(--surf3)}
 .tb-pill.active{background:var(--surf3);color:var(--text);border-color:var(--muted)}
 
-/* Loaded filename shown in the expanded Channels sidebar. */
+/* File name in the open channel sidebar */
 .sidebar-file-row{
   max-height:0;opacity:0;overflow:hidden;flex-shrink:0;
   padding:0 var(--space-2);transition:max-height .18s ease,opacity .12s ease,padding .18s ease;
@@ -199,10 +196,10 @@ canvas{display:block}
 }
 .icon-btn:hover{background:var(--surf3)}
 
-/* -- LAYOUT -- */
+/* App layout */
 .layout{display:flex;flex:1;min-height:0;overflow:hidden;position:relative}
 
-/* -- RESIZE HANDLES -- */
+/* Sidebar resize handle */
 .resize-handle-v{
   width:.375rem; flex-shrink:0; cursor:col-resize; background:transparent;
   position:relative; z-index:20; display:flex; align-items:center; justify-content:center;
@@ -235,7 +232,7 @@ canvas{display:block}
   background:var(--primary);
 }
 
-/* -- SIDEBAR (button-toggle channel panel) -- */
+/* Channel sidebar */
 .sidebar{
   position:absolute; left:0; top:0; bottom:0; z-index:10;
   width:2.5rem; flex-shrink:0; display:flex; flex-direction:column;
@@ -280,7 +277,7 @@ canvas{display:block}
 .sidebar:not(.expanded) .ch-item{justify-content:center;gap:0}
 .ch-empty-msg{font-size:.6875rem;color:var(--faint);padding:var(--space-1);white-space:nowrap}
 
-/* -- WORKSPACE -- */
+/* Plot workspace */
 .workspace{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;margin-left:2.5rem;transition:margin-left .22s cubic-bezier(.4,0,.2,1)}
 .sidebar.expanded + .workspace{margin-left:13.5rem}
 .main-area{display:flex;flex:1;min-height:0;overflow:hidden}
@@ -293,7 +290,7 @@ canvas{display:block}
   width:100%;height:100%;overflow-y:auto;overflow-x:hidden;
 }
 #mainCanvas{display:block;width:100%}
-/* Full-recording scrubber minimap. Its viewport mirrors the visible plot window. */
+/* Minimap for the full recording and visible window */
 .timeline{
   position:relative;flex-shrink:0;height:3.375rem;
   padding:0 var(--space-3) var(--space-3);
@@ -371,7 +368,7 @@ canvas{display:block}
 
 @media(any-pointer:coarse){.minimap-resize-pin{height:2rem}}
 
-/* -- FFT PANEL -- */
+/* FFT panel */
 .fft-col{
   width:0;overflow:hidden;border-left:.0625rem solid var(--border);
   display:flex;flex-direction:column;flex-shrink:0;
@@ -386,7 +383,7 @@ canvas{display:block}
 }
 .fft-header-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* FFT channel selector bar */
+/* FFT channel selector */
 .fft-ch-bar{
   padding:.375rem var(--space-2);border-bottom:.0625rem solid var(--divider);
   display:flex;flex-wrap:wrap;gap:var(--space-1);flex-shrink:0;
@@ -426,7 +423,7 @@ canvas{display:block}
 .fft-wrap{flex:1;min-height:0;background:var(--surf);overflow:hidden}
 #fftCanvas{width:100%;height:100%;display:block}
 
-/* -- EMPTY STATE -- */
+/* Empty state */
 .empty-state{
   position:absolute;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:.75rem;pointer-events:none;
@@ -455,7 +452,7 @@ canvas{display:block}
 .empty-upload-btn:hover{background:var(--primary-h)}
 .empty-upload-btn:focus-visible{outline:.125rem solid var(--primary);outline-offset:.1875rem}
 
-/* -- MODAL OVERLAY -- */
+/* Sample rate modal */
 .modal-backdrop{
   position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(.25rem);
   display:none;align-items:center;justify-content:center;z-index:100;
@@ -488,7 +485,7 @@ canvas{display:block}
 }
 .modal-select:hover{background:var(--surf3)}
 
-/* -- RESPONSIVE -- */
+/* Responsive styles */
 @media(max-width:56.25em){
   .fft-col.open{width:32%;min-width:10rem}
   .topbar-controls{gap:.625rem}
@@ -533,7 +530,7 @@ canvas{display:block}
   .logo-subtitle{display:none}
   .topbar-controls{flex-basis:100%}
 }
-/* ---- ONBOARDING TOUR: spotlight + tooltip card styling ---- */
+/* Guided tour */
 .tour-highlight{
   position:fixed; z-index:300; pointer-events:none;
   border-radius:.5rem;
@@ -547,7 +544,7 @@ canvas{display:block}
 }
 .tour-highlight.visible{ opacity:1; }
 
-/* Full-screen dim for steps with no target */
+/* Dim layer for steps without a target */
 .tour-dim{
   position:fixed; inset:0; z-index:299;
   background:rgba(0,0,0,.62);
@@ -556,7 +553,7 @@ canvas{display:block}
 }
 .tour-dim.visible{ opacity:1; pointer-events:all; }
 
-/* The tooltip card */
+/* Tour tip */
 .tour-card{
   position:fixed; z-index:301;
   width:min(18.75rem,calc(100vw - 2rem));
@@ -628,7 +625,7 @@ canvas{display:block}
 }
 .tour-btn-next:hover{background:var(--surf3)}
 
-/* Help button in topbar (opens the tour) */
+/* Tour help button */
 .help-btn{
   width:var(--topbar-button-height);height:var(--topbar-button-height);display:inline-grid;place-items:center;
   border-radius:var(--radius-md);border:.0625rem solid var(--border);background:var(--surf2);

@@ -7,7 +7,7 @@ No build step. Open `index.html` directly in a browser, or serve the folder with
 ## Project structure
 ```
 index.html   Markup only.
-style.css     All styling, in 3 sections (search for the ALL-CAPS headers):
+style.css     All styling, grouped under short section comments:
               base styles (colors/fonts/resets) -> layout (topbar, sidebar,
               plot, FFT panel, modal, responsive) -> onboarding tour.
 script.js     All logic, in 9 sections, in the order it actually runs:
@@ -15,7 +15,6 @@ script.js     All logic, in 9 sections, in the order it actually runs:
               controls -> plot drawing -> FFT drawing -> render loop &
               startup -> onboarding tour.
 ```
-Both files open with a comment explaining their section map. To find where to make a change, search the
-relevant file for its ALL-CAPS section header (e.g. "CONTROLS", "MAIN PLOT RENDERING") - each section has
-its own short comment describing what it owns. Colors/fonts live as CSS variables at the top of style.css;
-change them there rather than per-rule.
+`style.css` and `script.js` open with a short section map. Search for words such as `Controls`,
+`Main plot`, or `Minimap` to find related code. Shared colors and fonts are CSS variables near the top of
+`style.css`; change them there instead of editing each component.
