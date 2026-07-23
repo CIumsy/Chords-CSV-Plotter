@@ -88,7 +88,7 @@ const VERTICAL_SCALE_VALUES = Object.freeze([
 Static views draw up to 20,000 samples.
 Navigation uses a limited preview for speed.
 */
-const DEFAULT_WIN_MIN = 64, WIN_MAX = 20000, RAW_DRAW_MAX = WIN_MAX;
+const DEFAULT_WIN_MIN = 125, WIN_MAX = 20000, RAW_DRAW_MAX = WIN_MAX;
 const INTERACTIVE_RAW_MAX = 4096, FFT_MAX_SAMPLES = 32768;
 const coarsePointerQuery = window.matchMedia('(any-pointer: coarse)');
 
