@@ -1429,6 +1429,19 @@ const MARGIN = { top: 20, right: 14, bottom: 32, left: 62 };
 const MIN_BAND = 80;
 const PREF_BAND = 130;
 
+function alignMinimapToPlot() {
+  const left = cssRem(MARGIN.left);
+  const right = cssRem(MARGIN.right);
+  const style = el.minimapWrap.style;
+  if (
+    style.getPropertyValue('--minimap-plot-left') === left
+    && style.getPropertyValue('--minimap-plot-right') === right
+  ) return;
+  style.setProperty('--minimap-plot-left', left);
+  style.setProperty('--minimap-plot-right', right);
+  invalidateMinimap();
+}
+
 function drawMain() {
   const N = S.numericIdx.filter(i => S.selected.has(i)).length;
   const visibleCount = Math.max(0, Math.min(S.window, S.rowCount - S.start));
@@ -1469,6 +1482,7 @@ function drawMain() {
     }
   }
   MARGIN.left = Math.min(dynLeft, 90);
+  alignMinimapToPlot();
 
   const plotW = Math.max(10, canvasW - MARGIN.left - MARGIN.right);
   const plotH = Math.max(10, canvasH - MARGIN.top  - MARGIN.bottom);
@@ -1962,8 +1976,8 @@ function renderAll() {
   if (raf) cancelAnimationFrame(raf);
   raf = requestAnimationFrame(() => {
     raf = 0;
-    updateTimeline();
     drawMain();
+    updateTimeline();
     if (!interactiveRendering) scheduleFFT();
   });
 }
