@@ -34,9 +34,26 @@
           <svg class="tb-scale-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
         <div class="tb-scale-readout">
-          <span>Scale</span>
+          <label for="scaleInput">Scale</label>
           <span class="tb-scale-divider" aria-hidden="true"></span>
-          <output id="scaleValue" aria-live="polite">1.00&times;</output>
+          <span class="tb-scale-value">
+            <input
+              id="scaleInput"
+              class="tb-scale-input"
+              type="text"
+              inputmode="decimal"
+              value="1.00"
+              maxlength="5"
+              autocomplete="off"
+              spellcheck="false"
+              role="spinbutton"
+              aria-valuemin="0.10"
+              aria-valuemax="10.00"
+              aria-valuenow="1.00"
+              aria-label="Vertical scale from 0.10 to 10.00"
+            />
+            <span class="tb-scale-unit" aria-hidden="true">&times;</span>
+          </span>
         </div>
         <button class="tb-scale-btn" id="scalePlusBtn" type="button" aria-label="Increase vertical scale" title="Increase vertical scale">
           <svg class="tb-scale-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>

@@ -54,7 +54,7 @@ const el = {
   csvInput: $('csvInput'), uploadBtn: $('uploadBtn'), uploadText: $('uploadText'), helpBtn: $('helpBtn'), themeBtn: $('themeBtn'),
   chordsLogo: $('chordsLogo'),
   srInput: $('srInput'),
-  scaleMinusBtn: $('scaleMinusBtn'), scalePlusBtn: $('scalePlusBtn'), scaleValue: $('scaleValue'), fftBtn: $('fftBtn'),
+  scaleMinusBtn: $('scaleMinusBtn'), scalePlusBtn: $('scalePlusBtn'), scaleInput: $('scaleInput'), fftBtn: $('fftBtn'),
   fileNameDisplay: $('fileNameDisplay'), fileBadge: $('fileBadge'), fileBadgeRow: $('fileBadgeRow'), fileCloseBtn: $('fileCloseBtn'),
   chList: $('chList'),
   canvasWrap: $('canvasWrap'), canvasScroll: $('canvasScroll'),
@@ -741,38 +741,98 @@ function buildFftChannelList() {
 
 
 // Controls: vertical scale
-function closestVerticalScaleIndex(value) {
-  let closestIndex = 0;
-  let closestDistance = Infinity;
-  VERTICAL_SCALE_VALUES.forEach((candidate, index) => {
-    const distance = Math.abs(candidate - value);
-    if (distance < closestDistance) {
-      closestIndex = index;
-      closestDistance = distance;
-    }
-  });
-  return closestIndex;
+const VERTICAL_SCALE_MIN = VERTICAL_SCALE_VALUES[0];
+const VERTICAL_SCALE_MAX = VERTICAL_SCALE_VALUES[VERTICAL_SCALE_VALUES.length - 1];
+let lastScaleInputText = '1.00';
+
+function normalizeVerticalScale(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return S.scale;
+  return clamp(Math.round(numericValue * 100) / 100, VERTICAL_SCALE_MIN, VERTICAL_SCALE_MAX);
+}
+
+function updateVerticalScaleButtons() {
+  el.scaleMinusBtn.disabled = S.scale <= VERTICAL_SCALE_MIN;
+  el.scalePlusBtn.disabled = S.scale >= VERTICAL_SCALE_MAX;
 }
 
 function syncVerticalScaleControl() {
-  const scaleIndex = closestVerticalScaleIndex(S.scale);
-  S.scale = VERTICAL_SCALE_VALUES[scaleIndex];
-  el.scaleValue.textContent = `${S.scale.toFixed(2)}×`;
-  el.scaleMinusBtn.disabled = scaleIndex === 0;
-  el.scalePlusBtn.disabled = scaleIndex === VERTICAL_SCALE_VALUES.length - 1;
+  S.scale = normalizeVerticalScale(S.scale);
+  lastScaleInputText = S.scale.toFixed(2);
+  el.scaleInput.value = lastScaleInputText;
+  el.scaleInput.setAttribute('aria-valuenow', lastScaleInputText);
+  updateVerticalScaleButtons();
 }
 
 function setVerticalScale(nextScale) {
-  S.scale = VERTICAL_SCALE_VALUES[closestVerticalScaleIndex(nextScale)];
+  S.scale = normalizeVerticalScale(nextScale);
   syncVerticalScaleControl();
   renderAll();
 }
 
 function stepVerticalScale(direction) {
-  const currentIndex = closestVerticalScaleIndex(S.scale);
-  const nextIndex = clamp(currentIndex + direction, 0, VERTICAL_SCALE_VALUES.length - 1);
-  if (nextIndex !== currentIndex) setVerticalScale(VERTICAL_SCALE_VALUES[nextIndex]);
+  const epsilon = 1e-9;
+  let nextScale;
+  if (direction > 0) {
+    nextScale = VERTICAL_SCALE_VALUES.find(value => value > S.scale + epsilon);
+  } else {
+    for (let index = VERTICAL_SCALE_VALUES.length - 1; index >= 0; index--) {
+      if (VERTICAL_SCALE_VALUES[index] < S.scale - epsilon) {
+        nextScale = VERTICAL_SCALE_VALUES[index];
+        break;
+      }
+    }
+  }
+  if (nextScale !== undefined) setVerticalScale(nextScale);
 }
+
+function scaleInputTextIsValid(value) {
+  return /^(?:\d{0,2})(?:\.\d{0,2})?$/.test(value);
+}
+
+function commitVerticalScaleInput() {
+  const value = Number(el.scaleInput.value);
+  if (!el.scaleInput.value || !Number.isFinite(value)) {
+    syncVerticalScaleControl();
+    return;
+  }
+  setVerticalScale(value);
+}
+
+el.scaleInput.addEventListener('input', () => {
+  const inputText = el.scaleInput.value.replace(',', '.');
+  if (!scaleInputTextIsValid(inputText)) {
+    el.scaleInput.value = lastScaleInputText;
+    el.scaleInput.setSelectionRange(lastScaleInputText.length, lastScaleInputText.length);
+    return;
+  }
+  el.scaleInput.value = inputText;
+  lastScaleInputText = inputText;
+
+  const value = Number(inputText);
+  if (!inputText || !Number.isFinite(value)) return;
+  if (value < VERTICAL_SCALE_MIN || value > VERTICAL_SCALE_MAX) return;
+  S.scale = normalizeVerticalScale(value);
+  el.scaleInput.setAttribute('aria-valuenow', S.scale.toFixed(2));
+  updateVerticalScaleButtons();
+  renderAll();
+});
+
+el.scaleInput.addEventListener('blur', commitVerticalScaleInput);
+el.scaleInput.addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    el.scaleInput.blur();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    syncVerticalScaleControl();
+    el.scaleInput.blur();
+  } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+    event.preventDefault();
+    commitVerticalScaleInput();
+    stepVerticalScale(event.key === 'ArrowUp' ? 1 : -1);
+  }
+});
 
 // Sample rate
 el.srInput.addEventListener('input', () => {

@@ -146,9 +146,21 @@ canvas{display:block}
 .tb-scale-divider{
   align-self:stretch;width:.0625rem;background:var(--border);
 }
-.tb-scale-readout output{
-  width:100%;height:100%;padding-right:.25rem;display:inline-flex;align-items:center;justify-content:flex-end;
-  color:var(--text);font:inherit;font-variant-numeric:tabular-nums;text-align:right;
+.tb-scale-value{
+  position:relative;width:100%;height:100%;display:flex;align-items:center;
+  border-radius:var(--radius-sm);color:var(--text);
+  transition:background .12s,box-shadow .12s;
+}
+.tb-scale-value:focus-within{
+  background:var(--surf3);box-shadow:inset 0 0 0 .0625rem var(--primary);
+}
+.tb-scale-input{
+  width:100%;min-width:0;height:100%;padding:0 .625rem 0 0;border:0;outline:0;background:transparent;
+  color:inherit;font:inherit;font-variant-numeric:tabular-nums;text-align:right;line-height:1;
+  caret-color:var(--primary);user-select:text;
+}
+.tb-scale-unit{
+  position:absolute;right:.25rem;top:50%;transform:translateY(-50%);pointer-events:none;
 }
 .tb-pill,.upload-btn,.empty-upload-btn{
   display:inline-flex;align-items:center;justify-content:center;
