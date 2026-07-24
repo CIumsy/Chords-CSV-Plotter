@@ -1,20 +1,24 @@
-# Chords-CSV-Plotter
-A web based CSV signal plotter with FFT. Upload your csv file, enter the sampling rate(optional) and visualize your data.
+# Chords CSV Plotter
 
-## Running it
-No build step. Open `index.html` directly in a browser, or serve the folder with any static file server.
+A browser-based tool for viewing multichannel CSV recordings and their frequency content.
+
+## Open the plotter
+
+[Launch Chords CSV Plotter](https://upsidedownlabs.github.io/Chords-CSV-Plotter/)
+
+No installation or build step is required.
+
+## Features
+
+- Upload or drag and drop a CSV recording.
+- Plot multiple numeric channels and choose which ones to display.
+- Move and resize the minimap window to navigate long recordings.
+- Enter a sample rate to display time and FFT frequency in Hz.
+- Adjust the vertical scale and compare selected channels in the FFT view.
 
 ## Project structure
-```
-index.html   Markup only.
-style.css     All styling, grouped under short section comments:
-              base styles (colors/fonts/resets) -> layout (topbar, sidebar,
-              plot, FFT panel, modal, responsive) -> onboarding tour.
-script.js     All logic, in 9 sections, in the order it actually runs:
-              state/helpers -> theme -> csv loading -> channel lists ->
-              controls -> plot drawing -> FFT drawing -> render loop &
-              startup -> onboarding tour.
-```
-`style.css` and `script.js` open with a short section map. Search for words such as `Controls`,
-`Main plot`, or `Minimap` to find related code. Shared colors and fonts are CSS variables near the top of
-`style.css`; change them there instead of editing each component.
+
+- `index.html` - Page layout and controls.
+- `style.css` - Themes, spacing, responsive layout, and component styling.
+- `script.js` - CSV loading, plotting, minimap controls, FFT, and app behavior.
+- `ChordsBlack.svg` / `ChordsWhite.svg` - Logos for light and dark themes.
